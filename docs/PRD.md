@@ -56,13 +56,33 @@ DeepSpace web map (leafonread.tech) ◄── API (read-only)
 
 **Why two databases:** sensor readings are high-frequency time series (Tiger Data hypertables + continuous aggregates are built for this); trees/users/waterings are flexible documents (MongoDB). Each is the right tool for its job.
 
+### 4a. iMessage outbound: what Photon supports
+
+Researched 9/26 ([Spaces and Users](https://photon.codes/docs/spectrum-ts/spaces-and-users), [iMessage connection & routing](https://photon.codes/docs/spectrum-ts/providers/imessage/connection-and-routing), [Hermes Agent's Photon guide](https://hermes-agent.nousresearch.com/docs/user-guide/messaging/photon)):
+
+- **The SDK can text someone first.** `im.space.create(await im.user("+1..."))` then `.send(...)` starts a new DM; passing several users creates a group.
+- **But the line type matters:**
+
+| | Shared pool (free / Pro) | Dedicated line (Business) |
+|---|---|---|
+| Start a DM with a new number | **No** per Hermes docs: recipients must text the line first | Yes |
+| Group chats | **No**, throws `UnsupportedError` | Yes |
+| Sender number | Can differ per recipient | One number for everyone |
+| Limits | 5,000 msgs/day per server, 50 new conversations/line/day | Same defaults, raisable |
+
+**Decision: design for opt-in first, so the app works on either line.**
+1. Onboarding ends with **Say hi to your tree**, which opens iMessage prefilled with `Hi 🌳 join <userCode>`. The agent maps the sender's number to the user, so the conversation now exists and the agent can message them any time afterward. This is also good consent practice for unsolicited texts.
+2. Thirsty alerts go as **DMs to each adopter** (fan-out). Works on shared pool.
+3. **Block group chat is a stretch** that needs a dedicated line. AG asks the Photon sponsor table for a dedicated line or hackathon credits.
+4. **Open question for the Photon table:** on the shared pool, which number does a user text first? If the number isn't stable, the app fetches it from `GET /agent/line` (served by AG) instead of hardcoding `EXPO_PUBLIC_AGENT_PHONE`.
+
 **Why the web map is separate:** the DeepSpace SDK targets Vite + React on Cloudflare Workers and doesn't support React Native.
 
 ## 5. App features
 
 | Pri | Feature | Description |
 |---|---|---|
-| P0 | Onboarding | Phone number (ties the user to their iMessage identity), name, home block, push permission |
+| P0 | Onboarding | Phone number (ties the user to their iMessage identity), name, home block, push permission, then **"Say hi to your tree"**: opens iMessage with a prefilled join code so the user texts the agent first (opt-in; see §4a) |
 | P0 | Map | Trees near the user; pins colored **thirsty / ok / no sensor**; seeded from the 2015 NYC Street Tree Census around Columbia |
 | P0 | Tree profile | Name, species, persona blurb, live moisture gauge, 7-day chart, last watered, caretakers, **Text this tree** (opens iMessage to the agent's line) |
 | P0 | Log watering | One tap + gallons; a sensor rise auto-confirms it |
@@ -156,7 +176,8 @@ Legend: **A** = Andrew (app/API), **HW** = hardware teammate, **AG** = agent tea
 - [ ] **A** Map screen (`react-native-maps`), status-colored pins, refresh every 15 s. *Done when:* a fake-sensor dry-out turns a pin red without reopening the app.
 - [ ] **A** Tree profile with gauge + 7-day chart (e.g. `victory-native` or `react-native-gifted-charts`). *Done when:* the chart matches Tiger data.
 - [ ] **A** Log watering → `POST /waterings`; status flips to ok. *Done when:* the pin goes green after logging.
-- [ ] **A** "Text this tree" button opens `sms:`/iMessage to the agent's number with a prefilled message.
+- [ ] **A** "Say hi to your tree" (onboarding) and "Text this tree" (profile) open `sms:` to the agent's line with a prefilled join code / message. *Done when:* texting it makes the agent reply by name.
+- [ ] **AG** Before 4 PM Sat: confirm with the Photon table which line type we have, whether the shared-pool number is stable, and whether a dedicated line is available for the demo.
 - [ ] **AG** Agent replies in character when texted.
 
 ### Phase 3: Integrations (→ 6 AM Sun)
@@ -166,7 +187,7 @@ Legend: **A** = Andrew (app/API), **HW** = hardware teammate, **AG** = agent tea
 - [ ] **A** ElevenLabs voice endpoint with caching; play button on profile.
 - [ ] **A** Block leaderboard screen.
 - [ ] **A** Enable CORS for read endpoints; hand the base URL to the web map owner.
-- [ ] **AG** Handle `thirsty`/`thanks` events and send them to the neighborhood group chat; forward "I watered it" replies to `POST /waterings`.
+- [ ] **AG** Handle `join <userCode>` messages → link phone to user. Handle `thirsty`/`thanks` events as DMs to each recipient (group chat only if we have a dedicated line); forward "I watered it" replies to `POST /waterings`.
 - [ ] **TBD** DeepSpace web map at `leafonread.tech` reading `/trees` and `/leaderboard`.
 
 ### Phase 4: Freeze (6 → 10:30 AM Sun)
@@ -180,7 +201,7 @@ Legend: **A** = Andrew (app/API), **HW** = hardware teammate, **AG** = agent tea
 
 1. "Young street trees in NYC die from thirst, and reminders fade. Meet Gus."
 2. Pull the sensor out of wet soil. Within seconds, Gus's pin turns red on the app map.
-3. The block group chat gets a text from Gus, in character; play his voice clip.
+3. The judge's phone (they said hi to Gus at the start of the demo) gets a text from Gus, in character, with his voice clip. With a dedicated line, this goes to a block group chat instead.
 4. A judge taps **I watered it** (or replies in iMessage), and waters the pot.
 5. Moisture rises on the live chart; Gus texts a thank-you; the judge climbs the leaderboard.
 6. Close on the web map: "every block, every tree, every neighbor."
@@ -189,7 +210,7 @@ Legend: **A** = Andrew (app/API), **HW** = hardware teammate, **AG** = agent tea
 
 | Risk | Mitigation |
 |---|---|
-| Photon Spectrum may not support **proactive** outbound iMessage by phone number | AG verifies first thing. Fallback: users text the tree first to opt in; the agent replies in that thread afterward |
+| Shared-pool Photon lines can't start conversations or group chats (§4a) | Opt-in-first design: users text the tree during onboarding; alerts are DMs. Ask the Photon table for a dedicated line |
 | Hardware fails during judging | `fake-sensor.ts` in demo mode + backup video |
 | Grove moisture readings are noisy / uncalibrated | Per-sensor dry/wet calibration; average over the window |
 | Venue Wi-Fi flaky for the Pi | Phone hotspot for the Pi |
