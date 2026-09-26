@@ -83,7 +83,8 @@ export function createApp() {
       tiger = false
     }
     const ok = mongo && tiger
-    return c.json({ ok, mongo, tiger, demoMode, sensorLive: demoState.hardwareLive }, ok ? 200 : 503)
+    const gus = mongo ? await treeById(GUS_ID).catch(() => null) : null
+    return c.json({ ok, mongo, tiger, demoMode, sensorLive: gus ? hardwareFresh(gus) : false }, ok ? 200 : 503)
   })
 
   app.post("/readings", zValidator("json", readingBody), async (c) => {
@@ -91,7 +92,11 @@ export function createApp() {
     const time = body.ts ? new Date(body.ts) : new Date()
     if (Number.isNaN(time.getTime())) return c.json({ error: "bad ts" }, 400)
     const sensorId = canonicalSensorId(body.sensorId)
-    if (sensorId === GUS_SENSOR) demoState.markHardwareReading()
+    if (sensorId === GUS_SENSOR) {
+      demoState.markHardwareReading()
+      // Stored on the tree, not just in memory, so another API running against the same database pauses too.
+      await trees().updateOne({ sensorId }, { $set: { hardwareAt: time.toISOString() } })
+    }
     const tree = await recordReading({
       sensorId,
       moisture: body.moisture,
@@ -135,7 +140,7 @@ export function createApp() {
         : null,
       caretakers: caretakers.map((user) => ({ id: user._id, name: user.name })),
       // The real Arduino is plugged in and reporting for this tree (demo controls step aside).
-      sensorLive: tree.sensorId === GUS_SENSOR && demoState.hardwareLive,
+      sensorLive: tree.sensorId === GUS_SENSOR && hardwareFresh(tree),
     })
   })
 
@@ -631,6 +636,11 @@ export function createApp() {
   app.get("/demo/gus", (c) => c.json({ id: GUS_ID, blockId: GUS_BLOCK, publicApiUrl }))
 
   return app
+}
+
+/** Real hardware reported for this tree in the last 10s. */
+function hardwareFresh(tree: TreeDoc) {
+  return Boolean(tree.hardwareAt && Date.now() - Date.parse(tree.hardwareAt) < 10_000)
 }
 
 const digits = (value: string) => value.replace(/\D/g, "").slice(-10)

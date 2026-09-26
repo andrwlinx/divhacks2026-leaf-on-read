@@ -24,6 +24,8 @@ export type TreeDoc = {
   thankedEpisodeId: string | null
   thirstEpisodeAt: string | null
   lastWateredAt: string | null
+  /** Last reading from real hardware (the Arduino bridge). Shared in Mongo so every API instance's simulator yields. */
+  hardwareAt?: string | null
   /** When its Grok Imagine portrait was last drawn (also a cache-buster for the image URL). */
   portraitAt?: string | null
   /** Stickers neighbors placed on the tree's icon, one per slot; everyone sees them. */

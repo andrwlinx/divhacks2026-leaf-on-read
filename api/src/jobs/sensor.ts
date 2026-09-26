@@ -14,6 +14,8 @@ async function tick() {
   if (demoState.hardwareLive) return
   const tree = await treeById(GUS_ID).catch(() => null)
   if (!tree) return
+  // Checked on the tree in Mongo too, so every API instance sharing the database yields to the hardware.
+  if (tree.hardwareAt && Date.now() - Date.parse(tree.hardwareAt) < 10_000) return
   await recordReading({
     sensorId: tree.sensorId || GUS_SENSOR,
     moisture: demoState.moisture,
