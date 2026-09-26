@@ -1,0 +1,14 @@
+node_modules/
+.expo/
+dist/
+.expo-shared/
+*.log
+.env
+.env.local
+api/.env
+app/.env
+api/cache/
+app/expo-go-qr.png
+.DS_Store
+npm-debug.log*
+.do/.env
