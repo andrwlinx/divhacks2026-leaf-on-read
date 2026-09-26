@@ -67,6 +67,16 @@ export async function insertReading(row: {
   )
 }
 
+export async function firstReadingSince(treeId: string, since: Date) {
+  const result = await pool.query<{ moisture: number; time: Date }>(
+    `SELECT moisture, time FROM readings
+     WHERE tree_id = $1 AND time >= $2
+     ORDER BY time ASC LIMIT 1`,
+    [treeId, since],
+  )
+  return result.rows[0] ?? null
+}
+
 export async function latestReading(treeId: string) {
   const result = await pool.query<{
     moisture: number

@@ -1,5 +1,5 @@
 import { createServer } from "node:http"
-import { Spectrum, voice, type Space } from "spectrum-ts"
+import { Spectrum, attachment, type Space } from "spectrum-ts"
 import { imessage } from "spectrum-ts/providers/imessage"
 
 // The tree's brain lives in the API; this process only moves messages between iMessage and it.
@@ -43,7 +43,8 @@ async function sendTurn(space: Space, turn: { text: string; voiceUrl?: string | 
   await space.send(turn.text)
   if (!turn.voiceUrl) return
   const clip = await audio(turn.voiceUrl)
-  if (clip) await space.send(voice(clip, { name: "tree.mp3", mimeType: "audio/mpeg" }))
+  // Voice-note bubbles arrived empty on the shared line; a plain audio file plays reliably.
+  if (clip) await space.send(attachment(clip, { name: "Gus says.mp3", mimeType: "audio/mpeg" }))
 }
 
 async function handle(space: Space, handleId: string, content: { type: string; text?: string; read?: () => Promise<Uint8Array | Buffer> }) {

@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto"
 import { alertText } from "../copy.ts"
 import { collection } from "../db/mongo.ts"
-import { insertReading, latestReading, readingsSince } from "../db/tiger.ts"
+import { firstReadingSince, insertReading, latestReading } from "../db/tiger.ts"
 import { demoState } from "../demoState.ts"
 import { claimMs, demoMode, GUS_ID, publicApiUrl, wateringGraceMs } from "../env.ts"
 import { postEvents, sendPush } from "../lib/delivery.ts"
@@ -363,6 +363,8 @@ async function grokChat(
       role: item.role === "tree" ? "assistant" : "user",
       content: item.text,
     })),
+    // Earlier turns may quote old readings ("still at eighty"); restate the live state right before the reply.
+    { role: "system", content: currentStateLine(tree, facts) },
     { role: "user", content: message },
   ]
 
@@ -442,6 +444,12 @@ async function localReply(
     }
   }
   return { reply: smallTalk({ tree, user, message, moisture, feeling, recent }), actions: [] }
+}
+
+function currentStateLine(tree: TreeDoc, facts: Awaited<ReturnType<typeof treeFacts>>) {
+  const pct = facts.moisture === null ? "unknown" : `${Math.round(facts.moisture)}%`
+  const feeling = tree.status === "thirsty" ? "THIRSTY and needs water" : tree.status === "no_sensor" ? "without a sensor" : "watered and fine"
+  return `Right now, this moment: soil moisture ${pct}, you are ${feeling}. This overrides any number said earlier in the conversation.`
 }
 
 function memoryLine(user: UserDoc, memories: string[]) {
@@ -561,10 +569,12 @@ function streakFor(logs: WateringDoc[]) {
 
 export async function treeFacts(tree: TreeDoc) {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
-  const rows = await readingsSince(tree._id, since)
-  const latest = rows.at(-1)
-  const first = rows[0]
-  const recent = await waterings().find({ treeId: tree._id }).sort({ at: -1 }).limit(5).toArray()
+  // Two indexed single-row reads; sensor trees write every few seconds, so a 24h scan is tens of thousands of rows.
+  const [latest, first, recent] = await Promise.all([
+    latestReading(tree._id),
+    firstReadingSince(tree._id, since),
+    waterings().find({ treeId: tree._id }).sort({ at: -1 }).limit(5).toArray(),
+  ])
   const hoursSinceWater = tree.lastWateredAt
     ? Math.round(((Date.now() - Date.parse(tree.lastWateredAt)) / 36e5) * 10) / 10
     : null
