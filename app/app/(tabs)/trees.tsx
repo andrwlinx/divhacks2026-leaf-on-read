@@ -1,9 +1,9 @@
 import { Icon } from "@/components/icon"
-import { Button, Card, Pill } from "@/components/kit"
+import { Button, Card, LinkButton, MoistureMeter, Pill, ScreenState } from "@/components/kit"
 import { TreeBuddy } from "@/components/tree-buddy"
 import { CardStickers } from "@/components/card-stickers"
 import { TreePortrait } from "@/components/tree-portrait"
-import { colors, radius, rounded, statusMeta } from "@/constants/design"
+import { ago, colors, radius, rounded, statusMeta } from "@/constants/design"
 import { api } from "@/lib/api"
 import { cancelClaim } from "@/lib/messaging"
 import { useSession } from "@/lib/session"
@@ -13,49 +13,53 @@ import { useFocusEffect, useRouter } from "expo-router"
 import { useCallback, useState } from "react"
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native"
 
-function ago(iso: string | null) {
-  if (!iso) return "never"
-  const minutes = Math.round((Date.now() - Date.parse(iso)) / 60_000)
-  if (minutes < 1) return "just now"
-  if (minutes < 60) return `${minutes}m ago`
-  if (minutes < 60 * 24) return `${Math.round(minutes / 60)}h ago`
-  return `${Math.round(minutes / 1440)}d ago`
-}
-
+/** "Which of my trees needs me?" Thirsty ones first, each with the one thing to do about it. */
 export default function MyTrees() {
   const router = useRouter()
-  const { user, setPin, flashCoins } = useSession()
+  const { user, setPin, flashCoins, toast } = useSession()
   const [trees, setTrees] = useState<MyTree[] | null>(null)
+  const [error, setError] = useState("")
+  const [refreshing, setRefreshing] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
-  const [note, setNote] = useState("")
 
   const load = useCallback(async () => {
     if (!user) return
-    setTrees(await api<MyTree[]>(`/users/${user._id}/trees`))
+    try {
+      setTrees(await api<MyTree[]>(`/users/${user._id}/trees`))
+      setError("")
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Couldn't load your trees")
+    }
   }, [user])
 
   useFocusEffect(
     useCallback(() => {
-      void load().catch(() => null)
-      const timer = setInterval(() => void load().catch(() => null), 5_000)
+      void load()
+      const timer = setInterval(() => void load(), 5_000)
       return () => clearInterval(timer)
     }, [load]),
   )
+
+  async function refresh() {
+    setRefreshing(true)
+    await load()
+    setRefreshing(false)
+  }
 
   async function cancel(tree: MyTree) {
     if (!user) return
     try {
       await cancelClaim(tree.id, user._id)
-      setNote(`No worries. ${tree.name ?? "Your tree"}'s crew knows it still needs someone.`)
+      toast(`No worries. ${tree.name ?? "Your tree"}'s crew knows it still needs someone.`)
       await load()
-    } catch (error) {
-      setNote(error instanceof Error ? error.message : "Couldn't cancel that.")
+    } catch (caught) {
+      toast(caught instanceof Error ? caught.message : "Couldn't cancel that.")
     }
   }
 
   async function act(tree: MyTree, kind: "water" | "claim") {
     if (!user) return
-    setBusy(`${kind}-${tree.id}`)
+    setBusy(tree.id)
     try {
       if (kind === "water") {
         const watered = await api<{ coinsEarned?: number }>(`/trees/${tree.id}/waterings`, {
@@ -64,181 +68,161 @@ export default function MyTrees() {
         })
         setPin(tree.id, "ok")
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-        setNote(`Logged 5 gallons for ${tree.name ?? "your tree"} 💧`)
-        flashCoins(watered.coinsEarned ?? 0, `Watered ${tree.name ?? "your tree"}`)
+        const thanks = `5 gallons for ${tree.name ?? "your tree"} 💧`
+        if (watered.coinsEarned) flashCoins(watered.coinsEarned, thanks)
+        else toast(thanks)
       } else {
         await api(`/trees/${tree.id}/claim`, { method: "POST", body: JSON.stringify({ userId: user._id }) })
-        setNote(`You're on it. Neighbors will know.`)
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+        toast("You're on it. The crew knows 🙌")
       }
       await load()
-    } catch (error) {
-      const claimed = error as Error & { body?: { claim?: { name: string } } }
-      setNote(claimed.body?.claim ? `${claimed.body.claim.name} already has this one.` : claimed.message)
+    } catch (caught) {
+      const claimed = caught as Error & { body?: { claim?: { name: string } } }
+      toast(claimed.body?.claim ? `${claimed.body.claim.name} already has this one.` : claimed.message)
     } finally {
       setBusy(null)
     }
   }
 
-  // Thirsty first, whether a sensor says so or the estimate does.
-  const dryness = (tree: MyTree) =>
+  const needsWater = (tree: MyTree) =>
     tree.status === "thirsty" ||
     (tree.moistureSource === "estimate" && tree.moisture !== null && tree.moisture < tree.threshold)
-      ? 0
-      : 1
-  const sorted = [...(trees ?? [])].sort((a, b) => dryness(a) - dryness(b))
+  const needy = (trees ?? []).filter(needsWater)
+  const fine = (trees ?? []).filter((tree) => !needsWater(tree))
+
+  if (!trees) {
+    return error ? (
+      <ScreenState kind="error" title="Couldn't load your trees" text={error} action="Try again" onAction={() => void load()} />
+    ) : (
+      <ScreenState kind="loading" />
+    )
+  }
+
+  if (trees.length === 0) {
+    return (
+      <View style={styles.empty}>
+        <TreeBuddy mood="sleepy" size={120} />
+        <Text style={styles.emptyTitle}>No trees yet</Text>
+        <Text style={styles.emptyText}>Find a tree on your block, adopt it, and it&apos;ll text you when it&apos;s thirsty.</Text>
+        <Button label="Find a tree on the map" icon="map.fill" style={{ alignSelf: "stretch" }} onPress={() => router.navigate("/map")} />
+      </View>
+    )
+  }
+
+  const renderTree = (tree: MyTree) => {
+    const estimated = tree.moistureSource === "estimate"
+    const dry = needsWater(tree)
+    // Sensorless trees show an estimate, so their pill and face say "likely" instead of "no sensor".
+    const meta = estimated
+      ? { ...statusMeta(dry ? "thirsty" : "ok"), label: dry ? "Likely thirsty" : "Likely fine" }
+      : statusMeta(tree.status)
+    const mine = tree.claim?.userId === user?._id
+    const name = tree.name ?? tree.species
+    const open = () => router.push({ pathname: "/tree/[id]", params: { id: tree.id } })
+    return (
+      <Card key={tree.id} style={dry ? styles.cardThirsty : undefined}>
+        <CardStickers stickers={tree.stickers} size={44} />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${name}, ${meta.label}`}
+          accessibilityHint="Opens the tree"
+          style={styles.header}
+          onPress={open}
+        >
+          <View style={[styles.face, { backgroundColor: meta.soft }]}>
+            <TreePortrait url={tree.portraitUrl} mood={meta.mood} size={tree.portraitUrl ? 60 : 54} badge={false} />
+          </View>
+          <View style={styles.headerText}>
+            <Text style={styles.name} numberOfLines={1}>
+              {name}
+            </Text>
+            <Pill label={meta.label} icon={meta.icon} color={meta.color} soft={meta.soft} />
+          </View>
+          <Icon name="chevron.right" color={colors.inkSoft} size={14} />
+        </Pressable>
+
+        <MoistureMeter moisture={tree.moisture} threshold={tree.threshold} estimated={estimated} compact />
+        <Text style={styles.facts}>
+          Watered {ago(tree.lastWateredAt)} · {tree.adopters} caretaker{tree.adopters === 1 ? "" : "s"}
+        </Text>
+
+        {tree.claim ? (
+          <View style={styles.claim}>
+            <Icon name="hand.raised.fill" color={colors.soilDeep} size={14} />
+            <Text style={styles.claimText}>{mine ? "You're" : `${tree.claim.name} is`} on it</Text>
+            {mine ? <LinkButton label="Can't make it" color={colors.thirsty} onPress={() => void cancel(tree)} /> : null}
+          </View>
+        ) : null}
+
+        {dry || mine ? (
+          tree.status === "thirsty" && !tree.claim ? (
+            <Button
+              label="I'm on it"
+              icon="hand.raised.fill"
+              color={colors.soil}
+              busy={busy === tree.id}
+              hint="Tells the crew you'll bring water"
+              onPress={() => void act(tree, "claim")}
+            />
+          ) : (
+            <Button
+              label="I watered it · 5 gal"
+              icon="drop.fill"
+              color={colors.water}
+              busy={busy === tree.id}
+              onPress={() => void act(tree, "water")}
+            />
+          )
+        ) : null}
+      </Card>
+    )
+  }
 
   return (
     <ScrollView
       contentContainerStyle={styles.page}
-      refreshControl={<RefreshControl refreshing={false} onRefresh={() => void load()} tintColor={colors.leafDeep} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={colors.leafDeep} />}
     >
-      {note ? <Text style={styles.note}>{note}</Text> : null}
-
-      {trees?.length === 0 ? (
-        <View style={styles.empty}>
-          <TreeBuddy mood="sleepy" size={120} />
-          <Text style={styles.emptyTitle}>No trees yet</Text>
-          <Text style={styles.emptyText}>Find a tree on your block, adopt it, and it&apos;ll text you when it&apos;s thirsty.</Text>
-          <Button label="Find a tree on the map" icon="map.fill" onPress={() => router.navigate("/map")} />
-        </View>
+      {error ? <Text style={styles.error}>Showing the last update. {error}</Text> : null}
+      {needy.length ? (
+        <Text accessibilityRole="header" style={[styles.section, { color: colors.thirstyText }]}>
+          Needs you · {needy.length}
+        </Text>
       ) : null}
-
-      {sorted.map((tree) => {
-        const estimated = tree.moistureSource === "estimate"
-        const pct = tree.moisture === null ? null : Math.round(tree.moisture)
-        // Sensorless trees show an estimate, so their pill and face say "likely" instead of "no sensor".
-        const likelyThirsty = estimated && pct !== null && pct < tree.threshold
-        const meta = estimated
-          ? { ...statusMeta(likelyThirsty ? "thirsty" : "ok"), label: likelyThirsty ? "Likely thirsty" : "Likely fine" }
-          : statusMeta(tree.status)
-        const mine = tree.claim?.userId === user?._id
-        return (
-          <Card key={tree.id} style={tree.status === "thirsty" || likelyThirsty ? styles.cardThirsty : undefined}>
-            <CardStickers stickers={tree.stickers} size={44} />
-            <Pressable style={styles.header} onPress={() => router.push({ pathname: "/tree/[id]", params: { id: tree.id } })}>
-              <View style={[styles.face, { backgroundColor: meta.soft }]}>
-                <TreePortrait url={tree.portraitUrl} mood={meta.mood} size={tree.portraitUrl ? 64 : 58} badge={false} />
-              </View>
-              <View style={styles.headerText}>
-                <Text style={styles.name} numberOfLines={1}>{tree.name ?? tree.species}</Text>
-                <Text style={styles.meta} numberOfLines={1}>{tree.species} · {tree.address}</Text>
-                <Pill label={meta.label} icon={meta.icon} color={meta.color} soft={meta.soft} />
-              </View>
-              <Icon name="chevron.right" color={colors.muted} size={14} />
-            </Pressable>
-
-            <View>
-              <View style={styles.moistureRow}>
-                <View style={styles.sourceRow}>
-                  <Icon name={estimated ? "cloud.sun.fill" : "sensor.fill"} color={estimated ? colors.muted : colors.water} size={13} />
-                  <Text style={styles.meta}>{estimated ? "Estimated soil moisture" : "Live soil moisture"}</Text>
-                </View>
-                <Text style={[styles.pct, estimated && styles.pctEstimated]}>
-                  {pct === null ? "—" : `${estimated ? "~" : ""}${pct}%`}
-                </Text>
-              </View>
-              <View style={styles.track}>
-                <View
-                  style={[
-                    styles.fill,
-                    { width: `${pct ?? 0}%`, backgroundColor: meta.color },
-                    estimated && styles.fillEstimated,
-                  ]}
-                />
-                <View style={[styles.threshold, { left: `${tree.threshold}%` }]} />
-              </View>
-              {estimated ? (
-                <Text style={styles.estimateNote}>From its last watering and the past 3 days of rain and heat.</Text>
-              ) : null}
-            </View>
-
-            <View style={styles.facts}>
-              <Text style={styles.fact}>💧 Watered {ago(tree.lastWateredAt)}</Text>
-              <Text style={styles.fact}>👥 {tree.adopters} caretaker{tree.adopters === 1 ? "" : "s"}</Text>
-            </View>
-            {tree.claim ? (
-              <View style={styles.claim}>
-                <Icon name="hand.raised.fill" color={colors.soil} size={14} />
-                <Text style={styles.claimText}>{mine ? "You're" : `${tree.claim.name} is`} on it</Text>
-                {mine ? (
-                  <Pressable hitSlop={8} onPress={() => void cancel(tree)}>
-                    <Text style={styles.cancelClaim}>Cancel</Text>
-                  </Pressable>
-                ) : null}
-              </View>
-            ) : null}
-
-            <View style={styles.actions}>
-              <Button
-                label="Watered"
-                icon="drop.fill"
-                color={colors.water}
-                style={styles.action}
-                busy={busy === `water-${tree.id}`}
-                onPress={() => void act(tree, "water")}
-              />
-              {tree.status === "thirsty" && !tree.claim ? (
-                <Button
-                  label="On it"
-                  icon="hand.raised.fill"
-                  variant="outline"
-                  color={colors.soil}
-                  style={styles.action}
-                  busy={busy === `claim-${tree.id}`}
-                  onPress={() => void act(tree, "claim")}
-                />
-              ) : null}
-              <Button
-                label="Talk"
-                icon="mic.fill"
-                variant="soft"
-                color={colors.leafDeep}
-                style={styles.action}
-                onPress={() => router.push({ pathname: "/tree/[id]/talk", params: { id: tree.id } })}
-              />
-            </View>
-          </Card>
-        )
-      })}
+      {needy.map(renderTree)}
+      {fine.length ? (
+        <Text accessibilityRole="header" style={styles.section}>
+          {needy.length ? "Doing fine" : "All your trees are doing fine 🌿"}
+        </Text>
+      ) : null}
+      {fine.map(renderTree)}
     </ScrollView>
   )
 }
 
 const styles = StyleSheet.create({
   page: { padding: 16, gap: 14, paddingBottom: 32 },
-  note: { color: colors.leafDeep, fontWeight: "700", textAlign: "center" },
-  empty: { alignItems: "center", gap: 10, paddingTop: 40, paddingHorizontal: 20 },
+  error: { color: colors.thirstyText, fontSize: 13, textAlign: "center" },
+  section: { fontFamily: rounded, fontSize: 17, fontWeight: "800", color: colors.ink, marginTop: 4 },
+  empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10, paddingHorizontal: 24 },
   emptyTitle: { fontFamily: rounded, fontSize: 22, fontWeight: "800", color: colors.ink },
-  emptyText: { color: colors.inkSoft, textAlign: "center", lineHeight: 21, marginBottom: 8 },
+  emptyText: { color: colors.inkSoft, fontSize: 16, textAlign: "center", lineHeight: 22, marginBottom: 8 },
   cardThirsty: { borderWidth: 2, borderColor: colors.thirsty },
   header: { flexDirection: "row", alignItems: "center", gap: 12 },
-  face: { width: 64, height: 64, borderRadius: 32, alignItems: "center", justifyContent: "center" },
-  headerText: { flex: 1, gap: 3 },
+  face: { width: 60, height: 60, borderRadius: 30, alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  headerText: { flex: 1, gap: 4 },
   name: { fontFamily: rounded, fontSize: 20, fontWeight: "800", color: colors.ink },
-  meta: { color: colors.inkSoft, fontSize: 13 },
-  moistureRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 },
-  pct: { fontFamily: rounded, fontSize: 20, fontWeight: "800", color: colors.ink },
-  pctEstimated: { color: colors.inkSoft },
-  sourceRow: { flexDirection: "row", alignItems: "center", gap: 5 },
-  fillEstimated: { opacity: 0.55 },
-  estimateNote: { color: colors.muted, fontSize: 11, marginTop: 4 },
-  track: { height: 10, backgroundColor: colors.bg, borderRadius: 99, overflow: "hidden" },
-  fill: { height: 10, borderRadius: 99 },
-  threshold: { position: "absolute", top: 0, bottom: 0, width: 2, backgroundColor: colors.ink, opacity: 0.35 },
-  facts: { flexDirection: "row", gap: 14 },
-  fact: { color: colors.inkSoft, fontSize: 13, fontWeight: "600" },
+  facts: { color: colors.inkSoft, fontSize: 13 },
   claim: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    alignSelf: "flex-start",
     backgroundColor: colors.sunSoft,
-    borderRadius: radius.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    borderRadius: radius.md,
+    paddingLeft: 12,
+    paddingRight: 4,
+    minHeight: 44,
   },
-  cancelClaim: { color: colors.thirsty, fontWeight: "800", fontSize: 13, marginLeft: 6 },
-  claimText: { fontFamily: rounded, fontWeight: "700", color: colors.soil, fontSize: 13 },
-  actions: { flexDirection: "row", gap: 8 },
-  action: { flex: 1, paddingVertical: 12, paddingHorizontal: 8 },
+  claimText: { flex: 1, fontFamily: rounded, fontWeight: "700", color: colors.soilDeep, fontSize: 15 },
 })

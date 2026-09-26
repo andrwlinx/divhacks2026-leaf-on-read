@@ -17,6 +17,8 @@ export function BlockMap({
   pinOverrides: Record<string, TreePin["status"]>
   onRegion: (region: Region) => void
   onOpen: (id: string) => void
+  focus?: (Region & { key: number }) | null
+  selectedId?: string | null
 }) {
   return (
     <View style={styles.page}>

@@ -1,7 +1,8 @@
+import { textSafe } from "@/components/kit"
 import { TreeBuddy } from "@/components/tree-buddy"
 import { rounded, statusMeta } from "@/constants/design"
 import type { TreePin } from "@/lib/types"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Pressable, StyleSheet, Text, View } from "react-native"
 import MapView, { UrlTile } from "react-native-maps"
 
@@ -37,19 +38,30 @@ export function BlockMap({
   pinOverrides,
   onRegion,
   onOpen,
+  focus,
+  selectedId,
 }: {
   region: Region
   trees: TreePin[]
   pinOverrides: Record<string, TreePin["status"]>
   onRegion: (region: Region) => void
   onOpen: (id: string) => void
+  /** Glide the camera here whenever it changes (recenter, or a tree picked from the list). */
+  focus?: (Region & { key: number }) | null
+  selectedId?: string | null
 }) {
   const [camera, setCamera] = useState(region)
   const [size, setSize] = useState({ width: 0, height: 0 })
+  const mapRef = useRef<MapView>(null)
+
+  useEffect(() => {
+    if (focus) mapRef.current?.animateToRegion(focus, 450)
+  }, [focus])
 
   return (
     <View style={styles.map} onLayout={(event) => setSize(event.nativeEvent.layout)}>
       <MapView
+        ref={mapRef}
         style={styles.map}
         initialRegion={region}
         onRegionChange={setCamera}
@@ -88,6 +100,7 @@ export function BlockMap({
                   name={tree.name || tree.species}
                   status={status}
                   star={star}
+                  selected={tree.id === selectedId}
                   left={point.x - box.width / 2}
                   top={point.y - box.height}
                   onPress={() => onOpen(tree.id)}
@@ -104,6 +117,7 @@ function TreePointer({
   name,
   status,
   star,
+  selected,
   left,
   top,
   onPress,
@@ -111,6 +125,7 @@ function TreePointer({
   name: string
   status: TreePin["status"]
   star: boolean
+  selected: boolean
   left: number
   top: number
   onPress: () => void
@@ -118,9 +133,15 @@ function TreePointer({
   const meta = statusMeta(status)
   const box = star ? starBox : smallBox
   return (
-    <Pressable onPress={onPress} style={[styles.marker, box, { left, top }]}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${name}, ${meta.label.toLowerCase()}`}
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={[styles.marker, box, { left, top }, selected && { zIndex: 2, transform: [{ scale: 1.15 }] }]}
+    >
       {star ? (
-        <View style={[styles.label, { backgroundColor: meta.color }]}>
+        <View style={[styles.label, { backgroundColor: textSafe(meta.color) }]}>
           <Text style={styles.labelText} numberOfLines={1}>
             {name}
           </Text>
@@ -146,7 +167,7 @@ const styles = StyleSheet.create({
   map: { flex: 1, backgroundColor: "#FFFFFF" },
   marker: { position: "absolute", alignItems: "center", justifyContent: "flex-end" },
   label: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 3, maxWidth: 132 },
-  labelText: { color: "#fff", fontFamily: rounded, fontWeight: "800", fontSize: 12 },
+  labelText: { color: "#fff", fontFamily: rounded, fontWeight: "800", fontSize: 13 },
   bubble: { alignItems: "center", justifyContent: "center", borderWidth: 2.5, overflow: "hidden" },
   bubbleStar: { width: 52, height: 52, borderRadius: 26 },
   bubbleSmall: { width: 30, height: 30, borderRadius: 15, borderWidth: 2 },
