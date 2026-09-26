@@ -14,6 +14,8 @@ import { listThreads, openDm, postToThread, readThread } from "./services/thread
 import { drawPortraitSoon, isDrawing, portraitFor } from "./services/portraits.ts"
 import { buySticker, checkIn, placeSticker, treeStickers, wallet } from "./services/coins.ts"
 import { catalog, slots, stickerArt, stickerImageUrl } from "./services/stickers.ts"
+import { recentWeather } from "./lib/weather.ts"
+import { estimateMoisture } from "./services/moisture-estimate.ts"
 import {
   blockLeaderboard,
   chatWithTree,
@@ -192,17 +194,26 @@ export function createApp() {
     return c.json({ ...user, treeId: await homeTree(user._id) })
   })
 
-  // Trees this neighbor adopted, thirsty first, with live moisture for the My trees tab.
+  // Trees this neighbor adopted, thirsty first, with soil moisture for the My trees tab: live from the sensor
+  // when there is one, otherwise estimated from the last watering and the past three days of weather.
   app.get("/users/:id/trees", async (c) => {
     const rows = await trees().find({ adopterIds: c.req.param("id") }).toArray()
     const withReadings = await Promise.all(
       rows.map(async (tree) => {
         const latest = tree.sensorId ? await latestReading(tree._id) : null
+        const estimated = latest
+          ? null
+          : estimateMoisture({
+              nowMs: Date.now(),
+              lastWateredMs: tree.lastWateredAt ? Date.parse(tree.lastWateredAt) : null,
+              hours: await recentWeather(tree.lat, tree.lng),
+            })
         return {
           ...publicTree(tree),
           persona: tree.persona,
           claim: tree.claim && Date.parse(tree.claim.until) > Date.now() ? tree.claim : null,
-          moisture: latest?.moisture ?? null,
+          moisture: latest?.moisture ?? estimated,
+          moistureSource: latest ? ("sensor" as const) : ("estimate" as const),
         }
       }),
     )

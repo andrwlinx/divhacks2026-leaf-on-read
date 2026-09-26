@@ -67,6 +67,14 @@ export default function MyTrees() {
     }
   }
 
+  // Thirsty first, whether a sensor says so or the estimate does.
+  const dryness = (tree: MyTree) =>
+    tree.status === "thirsty" ||
+    (tree.moistureSource === "estimate" && tree.moisture !== null && tree.moisture < tree.threshold)
+      ? 0
+      : 1
+  const sorted = [...(trees ?? [])].sort((a, b) => dryness(a) - dryness(b))
+
   return (
     <ScrollView
       contentContainerStyle={styles.page}
@@ -83,12 +91,17 @@ export default function MyTrees() {
         </View>
       ) : null}
 
-      {trees?.map((tree) => {
-        const meta = statusMeta(tree.status)
+      {sorted.map((tree) => {
+        const estimated = tree.moistureSource === "estimate"
         const pct = tree.moisture === null ? null : Math.round(tree.moisture)
+        // Sensorless trees show an estimate, so their pill and face say "likely" instead of "no sensor".
+        const likelyThirsty = estimated && pct !== null && pct < tree.threshold
+        const meta = estimated
+          ? { ...statusMeta(likelyThirsty ? "thirsty" : "ok"), label: likelyThirsty ? "Likely thirsty" : "Likely fine" }
+          : statusMeta(tree.status)
         const mine = tree.claim?.userId === user?._id
         return (
-          <Card key={tree.id} style={tree.status === "thirsty" ? styles.cardThirsty : undefined}>
+          <Card key={tree.id} style={tree.status === "thirsty" || likelyThirsty ? styles.cardThirsty : undefined}>
             <CardStickers stickers={tree.stickers} size={44} />
             <Pressable style={styles.header} onPress={() => router.push({ pathname: "/tree/[id]", params: { id: tree.id } })}>
               <View style={[styles.face, { backgroundColor: meta.soft }]}>
@@ -102,18 +115,30 @@ export default function MyTrees() {
               <Icon name="chevron.right" color={colors.muted} size={14} />
             </Pressable>
 
-            {tree.sensorId ? (
-              <View>
-                <View style={styles.moistureRow}>
-                  <Text style={styles.meta}>Soil moisture</Text>
-                  <Text style={styles.pct}>{pct === null ? "—" : `${pct}%`}</Text>
+            <View>
+              <View style={styles.moistureRow}>
+                <View style={styles.sourceRow}>
+                  <Icon name={estimated ? "cloud.sun.fill" : "sensor.fill"} color={estimated ? colors.muted : colors.water} size={13} />
+                  <Text style={styles.meta}>{estimated ? "Estimated soil moisture" : "Live soil moisture"}</Text>
                 </View>
-                <View style={styles.track}>
-                  <View style={[styles.fill, { width: `${pct ?? 0}%`, backgroundColor: meta.color }]} />
-                  <View style={[styles.threshold, { left: `${tree.threshold}%` }]} />
-                </View>
+                <Text style={[styles.pct, estimated && styles.pctEstimated]}>
+                  {pct === null ? "—" : `${estimated ? "~" : ""}${pct}%`}
+                </Text>
               </View>
-            ) : null}
+              <View style={styles.track}>
+                <View
+                  style={[
+                    styles.fill,
+                    { width: `${pct ?? 0}%`, backgroundColor: meta.color },
+                    estimated && styles.fillEstimated,
+                  ]}
+                />
+                <View style={[styles.threshold, { left: `${tree.threshold}%` }]} />
+              </View>
+              {estimated ? (
+                <Text style={styles.estimateNote}>From its last watering and the past 3 days of rain and heat.</Text>
+              ) : null}
+            </View>
 
             <View style={styles.facts}>
               <Text style={styles.fact}>💧 Watered {ago(tree.lastWateredAt)}</Text>
@@ -176,6 +201,10 @@ const styles = StyleSheet.create({
   meta: { color: colors.inkSoft, fontSize: 13 },
   moistureRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 },
   pct: { fontFamily: rounded, fontSize: 20, fontWeight: "800", color: colors.ink },
+  pctEstimated: { color: colors.inkSoft },
+  sourceRow: { flexDirection: "row", alignItems: "center", gap: 5 },
+  fillEstimated: { opacity: 0.55 },
+  estimateNote: { color: colors.muted, fontSize: 11, marginTop: 4 },
   track: { height: 10, backgroundColor: colors.bg, borderRadius: 99, overflow: "hidden" },
   fill: { height: 10, borderRadius: 99 },
   threshold: { position: "absolute", top: 0, bottom: 0, width: 2, backgroundColor: colors.ink, opacity: 0.35 },

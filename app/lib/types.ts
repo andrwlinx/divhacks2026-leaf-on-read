@@ -90,6 +90,8 @@ export type MyTree = TreePin & {
   persona: string | null
   claim: { userId: string; name: string; until: string } | null
   moisture: number | null
+  /** "sensor" = live reading; "estimate" = from the last watering and the past three days of weather. */
+  moistureSource: "sensor" | "estimate"
   adopters: number
   lastWateredAt: string | null
   threshold: number

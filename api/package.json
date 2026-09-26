@@ -6,7 +6,7 @@
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "seed": "tsx scripts/seed-trees.ts",
-    "test": "tsx --test src/jobs/decide.test.ts src/services/coin-rules.test.ts"
+    "test": "tsx --test src/jobs/decide.test.ts src/services/coin-rules.test.ts src/services/moisture-estimate.test.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.6",
