@@ -7,6 +7,8 @@ import { claimMs, demoMode, GUS_ID, publicApiUrl, wateringGraceMs } from "../env
 import { postEvents, sendPush } from "../lib/delivery.ts"
 import { verifyWateringPhoto } from "../lib/gemini.ts"
 import { grokRespond, grokText, grokConfigured } from "../lib/grok.ts"
+import { pushNeighbors, pushNote, pushTree } from "../lib/deepspace.ts"
+import { recall, remember } from "../lib/memory.ts"
 import { synthesizeVoice } from "../lib/voice.ts"
 import { characterPrompt, greetingLine, smallTalk } from "./character.ts"
 import type { AlertDoc, MessageDoc, TreeDoc, UserDoc, WateringDoc } from "../types.ts"
@@ -57,6 +59,7 @@ export async function recordReading(input: {
   if (!tree) return null
   const status = statusFor(tree, input.moisture, input.time.getTime())
   await trees().updateOne({ _id: tree._id }, { $set: { status } })
+  pushTree({ ...tree, status }, input.moisture)
   return { ...tree, status }
 }
 
@@ -85,6 +88,7 @@ export async function emitAlert(options: {
 }) {
   const recipients = await adopterUsers(options.tree, options.exceptUserId)
   const treeName = options.tree.name || "This tree"
+  pushNote(options.tree._id, alertText(options.type, "en", treeName, Math.round(options.moisturePct), options.who), "tree")
   const built = recipients.map((user) => {
     const text = alertText(options.type, user.language, treeName, Math.round(options.moisturePct), options.who)
     const voiceUrl =
@@ -171,6 +175,12 @@ export async function logWatering(input: {
     { $set: { status: "ok", lastWateredAt: at, claim: null } },
   )
   if (demoMode && tree._id === GUS_ID) demoState.moisture = 80
+  const [waterer, updated] = await Promise.all([users().findOne({ _id: input.userId }), treeById(input.treeId)])
+  if (updated) pushTree(updated, undefined, true)
+  if (waterer) {
+    pushNote(input.treeId, `${waterer.name} poured ${input.gallons} gallons`, "watered", waterer.name)
+    pushNeighbors(await blockLeaderboard(waterer.blockId))
+  }
   await thankIfOpen(input.treeId)
   return watering
 }
@@ -205,6 +215,7 @@ export async function claimTree(treeId: string, userId: string) {
     until: new Date(Date.now() + claimMs).toISOString(),
   }
   await trees().updateOne({ _id: treeId }, { $set: { claim } })
+  pushTree({ ...tree, claim }, undefined, true)
   const moisture = (await moistureNow(treeId)) ?? tree.thirstThreshold
   await emitAlert({
     type: "claimed",
@@ -221,6 +232,7 @@ export async function releaseClaim(treeId: string, userId: string) {
   if (!tree?.claim) return true
   if (tree.claim.userId !== userId) return false
   await trees().updateOne({ _id: treeId }, { $set: { claim: null } })
+  pushTree({ ...tree, claim: null }, undefined, true)
   return true
 }
 
@@ -262,9 +274,10 @@ export async function chatWithTree(input: {
 }) {
   const [tree, user] = await Promise.all([treeById(input.treeId), users().findOne({ _id: input.userId })])
   if (!tree || !user) return null
-  const [facts, history] = await Promise.all([
+  const [facts, history, memories] = await Promise.all([
     treeFacts(tree),
     messages().find({ treeId: tree._id, userId: user._id }).sort({ at: -1 }).limit(20).toArray(),
+    recall(tree, user, input.message),
   ])
   history.reverse()
   const state = treeState(tree, facts)
@@ -291,7 +304,7 @@ export async function chatWithTree(input: {
     actions.push(...fallback.actions)
   } else {
     try {
-      const generated = await grokChat(tree, user, facts, history, input.message, input.channel, actions, input.mode)
+      const generated = await grokChat(tree, user, facts, history, input.message, input.channel, actions, input.mode, memories)
       reply = generated || fallbackLine(tree, facts.moisture)
     } catch (error) {
       console.error("grok chat failed", error)
@@ -302,6 +315,7 @@ export async function chatWithTree(input: {
   }
 
   await savedTurn
+  remember(tree, user, input.message)
   await messages().insertOne({
     _id: randomUUID(),
     treeId: tree._id,
@@ -326,6 +340,7 @@ async function grokChat(
   channel: "app" | "imessage",
   actions: unknown[],
   mode: "text" | "voice" = "text",
+  memories: string[] = [],
 ) {
   let input: unknown[] = [
     {
@@ -341,6 +356,7 @@ async function grokChat(
         "Only state moisture, temperature, and watering facts that appear below. Never invent a reading.",
         "If the person asks something unrelated or unsafe, deflect in character and talk about the block or yourself.",
         `Live facts: ${JSON.stringify(facts)}`,
+        memoryLine(user, memories),
       ].join("\n"),
     },
     ...history.map((item) => ({
@@ -428,6 +444,13 @@ async function localReply(
   return { reply: smallTalk({ tree, user, message, moisture, feeling, recent }), actions: [] }
 }
 
+function memoryLine(user: UserDoc, memories: string[]) {
+  if (memories.length === 0) return ""
+  // Backboard phrases facts as "User has…"; name the neighbor so the model attributes them correctly.
+  const facts = memories.map((memory) => memory.replace(/\bUser\b/g, user.name))
+  return `What ${user.name} told you in earlier conversations (bring one up only when it fits, never list them): ${facts.join("; ")}`
+}
+
 const voiceRules = [
   "Your reply is read aloud by a text-to-speech voice: no emoji, no markdown, no lists, and write numbers the way you'd say them.",
   "Sound like your personality, and let how you physically feel right now (from the live facts) color what you say.",
@@ -458,7 +481,10 @@ export function treeState(tree: TreeDoc, facts: Awaited<ReturnType<typeof treeFa
 export async function greetTree(input: { treeId: string; userId: string }) {
   const [tree, user] = await Promise.all([treeById(input.treeId), users().findOne({ _id: input.userId })])
   if (!tree || !user) return null
-  const facts = await treeFacts(tree)
+  const [facts, memories] = await Promise.all([
+    treeFacts(tree),
+    recall(tree, user, "recent news, plans, worries, school, work, pets, family", 4),
+  ])
   const state = treeState(tree, facts)
   let reply = ""
   if (grokConfigured()) {
@@ -473,11 +499,12 @@ export async function greetTree(input: { treeId: string; userId: string }) {
             ...voiceRules,
             "Only state facts that appear below. Never invent a reading.",
             `Live facts: ${JSON.stringify({ ...facts, ...state })}`,
+            memoryLine(user, memories),
           ].join("\n"),
         },
         {
           role: "user",
-          content: `${user.name} just walked up to you. Greet them by name, tell them how you're doing right now in your own words, and ask them something. Two or three short sentences.`,
+          content: `${user.name} just walked up to you. Greet them by name, tell them how you're doing right now in your own words, and ask them something. If they told you something in earlier conversations, ask a warm follow-up about that specific thing instead of a generic question. Two or three short sentences.`,
         },
       ])
     } catch (error) {
@@ -502,6 +529,34 @@ export async function greetTree(input: { treeId: string; userId: string }) {
 function fallbackLine(tree: TreeDoc, moisture: number | null) {
   const pct = moisture === null ? "unknown" : `${Math.round(moisture)}%`
   return `I'm ${tree.name || "the tree"}. Soil moisture is ${pct}.`
+}
+
+export async function blockLeaderboard(blockId: string) {
+  const neighbors = await users().find({ blockId }).toArray()
+  const ids = neighbors.map((user) => user._id)
+  const logs = ids.length ? await waterings().find({ userId: { $in: ids } }).toArray() : []
+  const board = neighbors.map((user) => {
+    const mine = logs.filter((log) => log.userId === user._id)
+    const gallons = mine.reduce((sum, log) => sum + log.gallons, 0)
+    return { userId: user._id, name: user.name, gallons, streak: streakFor(mine) }
+  })
+  board.sort((a, b) => b.gallons - a.gallons)
+  return board
+}
+
+function streakFor(logs: WateringDoc[]) {
+  const days = [...new Set(logs.map((log) => log.at.slice(0, 10)))].sort().reverse()
+  if (days.length === 0) return 0
+  let streak = 1
+  let cursor = Date.parse(`${days[0]}T00:00:00Z`)
+  for (const day of days.slice(1)) {
+    const time = Date.parse(`${day}T00:00:00Z`)
+    if (cursor - time === 86_400_000) {
+      streak += 1
+      cursor = time
+    } else break
+  }
+  return streak
 }
 
 export async function treeFacts(tree: TreeDoc) {

@@ -16,7 +16,9 @@ export const GUS_BACKSTORY = [
 export function characterPrompt(tree: TreeDoc) {
   return [
     tree.persona || "You are dry, friendly, and brief.",
-    tree.backstory ? `Backstory (use naturally, never recite it): ${tree.backstory}` : "",
+    tree.backstory
+      ? `Your own backstory (use naturally, never recite it; the people and animals in it are YOUR acquaintances on the block, not the neighbor's): ${tree.backstory}`
+      : "",
     "Be a conversation partner, not a status report:",
     "- React to what they actually said first, with feeling.",
     "- About half the time, end with a short, natural question back to them.",

@@ -29,6 +29,9 @@ services:
       - { key: ELEVENLABS_API_KEY, type: SECRET, value: set-in-dashboard }
       - { key: ELEVENLABS_VOICE_ID, value: JBFqnCBsd6RMkjVDRZzb }
       - { key: GEMINI_API_KEY, type: SECRET, value: set-in-dashboard }
+      - { key: BACKBOARD_API_KEY, type: SECRET, value: set-in-dashboard }
+      - { key: DEEPSPACE_SYNC_URL, value: "https://leafonread.app.space/api/leaf/sync" }
+      - { key: DEEPSPACE_SYNC_TOKEN, type: SECRET, value: set-in-dashboard }
   # iMessage bridge: no public route; the API reaches it on the internal network.
   - name: agent
     github:

@@ -10,6 +10,7 @@ import { alertText } from "./copy.ts"
 import { speechConfigured, transcribe } from "./lib/speech.ts"
 import { cachedVoice, clipAudio, speakClip, synthesizeVoice } from "./lib/voice.ts"
 import {
+  blockLeaderboard,
   chatWithTree,
   claimTree,
   greetTree,
@@ -329,21 +330,7 @@ export function createApp() {
     return c.json(rows)
   })
 
-  app.get("/blocks/:id/leaderboard", async (c) => {
-    const blockId = c.req.param("id")
-    const neighbors = await users().find({ blockId }).toArray()
-    const ids = neighbors.map((user) => user._id)
-    const logs = ids.length
-      ? await waterings().find({ userId: { $in: ids } }).toArray()
-      : []
-    const board = neighbors.map((user) => {
-      const mine = logs.filter((log) => log.userId === user._id)
-      const gallons = mine.reduce((sum, log) => sum + log.gallons, 0)
-      return { userId: user._id, name: user.name, gallons, streak: streakFor(mine) }
-    })
-    board.sort((a, b) => b.gallons - a.gallons)
-    return c.json(board)
-  })
+  app.get("/blocks/:id/leaderboard", async (c) => c.json(await blockLeaderboard(c.req.param("id"))))
 
   app.post("/demo/sensor", async (c) => {
     if (!demoMode) return c.json({ error: "demo mode is off" }, 403)
@@ -395,17 +382,3 @@ function publicTree(tree: TreeDoc) {
   }
 }
 
-function streakFor(logs: WateringDoc[]) {
-  const days = [...new Set(logs.map((log) => log.at.slice(0, 10)))].sort().reverse()
-  if (days.length === 0) return 0
-  let streak = 1
-  let cursor = Date.parse(`${days[0]}T00:00:00Z`)
-  for (const day of days.slice(1)) {
-    const time = Date.parse(`${day}T00:00:00Z`)
-    if (cursor - time === 86_400_000) {
-      streak += 1
-      cursor = time
-    } else break
-  }
-  return streak
-}
