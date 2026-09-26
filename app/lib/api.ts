@@ -25,3 +25,21 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   }
   return body as T
 }
+
+// Multipart upload; leaves Content-Type to fetch so the boundary is set.
+export async function upload<T>(path: string, form: FormData): Promise<T> {
+  if (!base) throw new Error("EXPO_PUBLIC_API_URL is not set")
+  const response = await fetch(`${base}${path}`, {
+    method: "POST",
+    headers: { Accept: "application/json" },
+    body: form,
+  })
+  const text = await response.text()
+  const body = text ? JSON.parse(text) : null
+  if (!response.ok) {
+    const error = new Error(body?.error || response.statusText) as Error & { status?: number }
+    error.status = response.status
+    throw error
+  }
+  return body as T
+}

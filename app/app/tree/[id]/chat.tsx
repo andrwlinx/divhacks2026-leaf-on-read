@@ -4,7 +4,7 @@ import { colors, radius, rounded, statusMeta } from "@/constants/design"
 import { api } from "@/lib/api"
 import { useSession } from "@/lib/session"
 import type { ChatMessage, TreeDetail } from "@/lib/types"
-import { Stack, useLocalSearchParams } from "expo-router"
+import { Stack, useLocalSearchParams, useRouter } from "expo-router"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { FlatList, KeyboardAvoidingView, Pressable, StyleSheet, Text, TextInput, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
@@ -14,6 +14,7 @@ const suggestions = ["How are you feeling?", "I watered you 💧", "I'm on it!",
 export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const { user } = useSession()
+  const router = useRouter()
   const insets = useSafeAreaInsets()
   const list = useRef<FlatList<ChatMessage>>(null)
   const [tree, setTree] = useState<TreeDetail | null>(null)
@@ -70,6 +71,14 @@ export default function ChatScreen() {
               </View>
               <Text style={styles.headerName}>{name}</Text>
             </View>
+          ),
+          headerRight: () => (
+            <Pressable
+              hitSlop={10}
+              onPress={() => id && router.push({ pathname: "/tree/[id]/talk", params: { id } })}
+            >
+              <Icon name="mic.fill" color={colors.leafDeep} size={20} />
+            </Pressable>
           ),
         }}
       />

@@ -137,6 +137,13 @@ export default function TreeScreen() {
           {tree.species} · {tree.address}
         </Text>
         <Pill label={meta.label} icon={meta.icon} color={meta.color} soft={colors.card} />
+        <Button
+          label={`Talk to ${name}`}
+          icon="mic.fill"
+          color={colors.leafDeep}
+          style={styles.talk}
+          onPress={() => router.push({ pathname: "/tree/[id]/talk", params: { id: tree.id } })}
+        />
       </View>
 
       {tree.persona ? (
@@ -311,6 +318,7 @@ const styles = StyleSheet.create({
   hero: { alignItems: "center", borderRadius: radius.lg, paddingVertical: 22, paddingHorizontal: 16, gap: 6 },
   name: { fontFamily: rounded, fontSize: 32, fontWeight: "800", color: colors.ink },
   meta: { color: colors.inkSoft, textAlign: "center" },
+  talk: { alignSelf: "stretch", marginTop: 8 },
   quote: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
   persona: { flex: 1, color: colors.ink, lineHeight: 22, fontStyle: "italic" },
   claim: {

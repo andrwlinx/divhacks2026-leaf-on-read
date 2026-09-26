@@ -90,6 +90,7 @@ Researched 9/26 ([Spaces and Users](https://photon.codes/docs/spectrum-ts/spaces
 | P1 | Photo proof | Optional photo; Gemini checks it shows watering |
 | P0 | Talk to your tree (iMessage) | Text the tree anything; it replies in character, grounded in its real sensor data and watering history (§8a) |
 | P1 | Talk to your tree (in app) | Chat screen on the tree profile using the same brain and history as iMessage |
+| P1 | Talk out loud | Hold-to-talk voice conversation on its own screen: the tree greets you, says how it's doing (thirsty/fine, soil moisture), and answers in its persona's voice. ElevenLabs Scribe for speech-to-text and ElevenLabs TTS for replies; falls back to typing and the iPhone's built-in voice when keys are missing |
 | P2 | Voice replies | Tree replies as ElevenLabs voice notes in iMessage and playable audio in the app |
 | P1 | Hear your tree | ElevenLabs voice clip in the tree's voice on the profile |
 | P1 | Block leaderboard | Gallons and streaks per neighbor (people ranked for contributing, not trees) |
@@ -117,6 +118,9 @@ All JSON. Base URL from `EXPO_PUBLIC_API_URL`.
 | GET | `/blocks/:id/leaderboard` | — | `[{userId, name, gallons, streak}]` | App, web map |
 | POST | `/trees/:id/chat` | `{userId, message, channel: "app"\|"imessage"}` | `{reply, actions[], voiceUrl?}` | App, agent |
 | GET | `/trees/:id/chat` | `?userId=&limit=50` | message history | App |
+| POST | `/trees/:id/talk/greet` | `{userId}` | `{reply, state, audioUrl}`: the tree says hi and how it's doing | App |
+| POST | `/trees/:id/talk` | multipart `userId` + `audio` (m4a) or `text` | `{transcript, reply, actions, state, audioUrl}` | App |
+| GET | `/voice/clips/:id` | — | `audio/mpeg` spoken reply | App |
 | GET | `/trees/:id/voice` | `?type=thirsty\|thanks` | `audio/mpeg` (cached) | App, agent |
 
 **Outbound to the agent** (share with Agent teammate by **4 PM Sat**):

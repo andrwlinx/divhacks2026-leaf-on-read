@@ -65,3 +65,19 @@ export function pinColor(status: TreeStatus) {
   if (status === "ok") return "#2D6A4F"
   return "#8D99AE"
 }
+
+export type TreeState = {
+  status: TreeStatus
+  feeling: "thirsty" | "fine" | "refreshed" | "unknown"
+  moisture: number | null
+  threshold: number
+  hoursSinceWater: number | null
+  claimedBy: string | null
+}
+
+export type TalkTurn = {
+  reply: string
+  state: TreeState | null
+  audioUrl: string | null
+  transcript?: string
+}

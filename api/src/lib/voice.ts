@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -44,4 +45,36 @@ export async function synthesizeVoice(treeId: string, type: string, language: st
   await mkdir(cacheDir, { recursive: true })
   await writeFile(voiceCachePath(treeId, type, language), audio)
   return audio
+}
+
+const clipId = /^[0-9a-f-]{36}$/
+
+export function clipPath(id: string) {
+  if (!clipId.test(id)) return null
+  return path.join(cacheDir, `talk-${id}.mp3`)
+}
+
+// One-off spoken reply for voice conversations. Returns a clip id, or null when TTS is unavailable.
+export async function speakClip(text: string, language: string) {
+  const model = voiceModel(language)
+  const apiKey = process.env.ELEVENLABS_API_KEY
+  const voiceId = process.env.ELEVENLABS_VOICE_ID
+  const spoken = text.replace(/\p{Extended_Pictographic}/gu, "").trim()
+  if (!model || !apiKey || !voiceId || !spoken) return null
+  try {
+    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      method: "POST",
+      headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ text: spoken, model_id: model }),
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!response.ok) return null
+    const id = randomUUID()
+    await mkdir(cacheDir, { recursive: true })
+    await writeFile(path.join(cacheDir, `talk-${id}.mp3`), Buffer.from(await response.arrayBuffer()))
+    return id
+  } catch (error) {
+    console.error("tts failed", error)
+    return null
+  }
 }

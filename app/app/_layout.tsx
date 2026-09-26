@@ -28,6 +28,7 @@ export default function RootLayout() {
         <Stack.Screen name="leaderboard" options={{ title: "Block leaderboard" }} />
         <Stack.Screen name="tree/[id]" options={{ title: "" }} />
         <Stack.Screen name="tree/[id]/chat" options={{ title: "Chat" }} />
+        <Stack.Screen name="tree/[id]/talk" options={{ title: "Talk" }} />
       </Stack>
       <AlertBanner />
     </SessionProvider>

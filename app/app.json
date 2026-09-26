@@ -38,7 +38,12 @@
         }
       ],
       "expo-secure-store",
-      "expo-audio",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow $(PRODUCT_NAME) to hear you so you can talk with your tree."
+        }
+      ],
       "expo-font",
       "expo-image",
       "expo-status-bar",
