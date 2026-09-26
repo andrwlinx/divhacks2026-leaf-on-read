@@ -92,15 +92,25 @@ async function handle(space: Space, handleId: string, content: { type: string; t
   }
 }
 
+// Phones typed into the app may lack a country code; iMessage needs E.164 (Apple ID emails pass through).
+function handleFor(phone: string) {
+  if (phone.includes("@")) return phone
+  const digits = phone.replace(/\D/g, "")
+  if (digits.length === 10) return `+1${digits}`
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`
+  return phone.startsWith("+") ? phone : `+${digits}`
+}
+
 async function deliver(event: Event) {
   for (const message of event.messages) {
+    const handle = handleFor(message.phone)
     try {
-      const space = spaces.get(message.phone) ?? (await im.space.create(await im.user(message.phone)))
-      spaces.set(message.phone, space)
+      const space = spaces.get(handle) ?? (await im.space.create(await im.user(handle)))
+      spaces.set(handle, space)
       await sendTurn(space, { text: message.text, voiceUrl: message.voiceUrl })
     } catch (error) {
       // On shared lines this fails until the neighbor has texted the tree first.
-      console.error(`couldn't deliver ${event.type} to ${message.phone}`, error)
+      console.error(`couldn't deliver ${event.type} to ${handle}: ${error instanceof Error ? error.message : error}`)
     }
   }
 }
