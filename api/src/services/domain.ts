@@ -8,6 +8,7 @@ import { postEvents, sendPush } from "../lib/delivery.ts"
 import { verifyWateringPhoto } from "../lib/gemini.ts"
 import { grokRespond, grokText, grokConfigured } from "../lib/grok.ts"
 import { synthesizeVoice } from "../lib/voice.ts"
+import { characterPrompt, greetingLine, smallTalk } from "./character.ts"
 import type { AlertDoc, MessageDoc, TreeDoc, UserDoc, WateringDoc } from "../types.ts"
 
 const trees = () => collection<TreeDoc>("trees")
@@ -114,7 +115,7 @@ export async function emitAlert(options: {
     treeName,
     moisturePct: Math.round(options.moisturePct),
     messages: built.map((item) => ({
-      phone: item.user.phone,
+      phone: item.user.imessageId || item.user.phone,
       language: item.user.language,
       text: item.text,
       ...(item.voiceUrl ? { voiceUrl: item.voiceUrl } : {}),
@@ -270,6 +271,9 @@ export async function chatWithTree(input: {
     .limit(20)
     .toArray()
   history.reverse()
+  const state = treeState(tree, facts)
+  const recent = history.filter((item) => item.role === "tree").map((item) => item.text).slice(-8)
+  const local = () => localReply(tree, user, input.message, facts.moisture, input.channel, state.feeling, recent)
 
   await messages().insertOne({
     _id: randomUUID(),
@@ -285,18 +289,18 @@ export async function chatWithTree(input: {
   const actions: unknown[] = []
   let reply = ""
   if (!grokConfigured()) {
-    const local = await localReply(tree, user, input.message, facts.moisture, input.channel)
-    reply = local.reply
-    actions.push(...local.actions)
+    const fallback = await local()
+    reply = fallback.reply
+    actions.push(...fallback.actions)
   } else {
     try {
       const generated = await grokChat(tree, user, facts, history, input.message, input.channel, actions, input.mode)
       reply = generated || fallbackLine(tree, facts.moisture)
     } catch (error) {
       console.error("grok chat failed", error)
-      const local = await localReply(tree, user, input.message, facts.moisture, input.channel)
-      reply = local.reply
-      actions.push(...local.actions)
+      const fallback = await local()
+      reply = fallback.reply
+      actions.push(...fallback.actions)
     }
   }
 
@@ -330,7 +334,7 @@ async function grokChat(
         mode === "voice"
           ? `You are ${tree.name || "a street tree"}, a real NYC street tree talking out loud with ${user.name}, a neighbor standing next to you.`
           : `You are ${tree.name || "a street tree"}, a real NYC street tree texting a neighbor.`,
-        tree.persona || "You are dry, friendly, and brief.",
+        characterPrompt(tree),
         `Species: ${tree.species}. Address: ${tree.address}.`,
         `Speak ${user.language}. Keep replies to 1-3 short sentences.`,
         ...(mode === "voice" ? voiceRules : []),
@@ -404,21 +408,24 @@ async function localReply(
   message: string,
   moisture: number | null,
   source: "app" | "imessage",
+  feeling: ReturnType<typeof treeState>["feeling"],
+  recent: string[],
 ) {
-  const name = tree.name || "the tree"
-  const pct = moisture === null ? "unknown" : `${Math.round(moisture)}%`
-  if (/water|bucket|gallon/i.test(message)) {
+  if (/\b(i )?(just )?(watered|gave you|poured)\b|\bbuckets?\b|\bgallons?\b/i.test(message)) {
     await logWatering({ treeId: tree._id, userId: user._id, gallons: 5, source })
-    return { reply: `${name} here. I felt that. Thank you.`, actions: [{ name: "log_watering", gallons: 5 }] }
+    return {
+      reply: `Oh, I can feel that all the way down to my roots. Thank you, ${user.name}. You're a real one.`,
+      actions: [{ name: "log_watering", gallons: 5 }],
+    }
   }
   if (/\bon it\b/i.test(message)) {
     await claimTree(tree._id, user._id)
-    return { reply: `${name} here. I'll hold off the others.`, actions: [{ name: "claim" }] }
+    return {
+      reply: `My hero. I'll tell the others you've got me, ${user.name}. Take your time, but also, hurry.`,
+      actions: [{ name: "claim" }],
+    }
   }
-  return {
-    reply: `I'm ${name}. Soil moisture is ${pct}.`,
-    actions: [],
-  }
+  return { reply: smallTalk({ tree, user, message, moisture, feeling, recent }), actions: [] }
 }
 
 const voiceRules = [
@@ -429,7 +436,7 @@ const voiceRules = [
 
 export function treeState(tree: TreeDoc, facts: Awaited<ReturnType<typeof treeFacts>>) {
   const moisture = facts.moisture === null ? null : Math.round(facts.moisture)
-  const feeling =
+  const feeling: "thirsty" | "fine" | "refreshed" | "unknown" =
     tree.status === "thirsty"
       ? "thirsty"
       : tree.status === "no_sensor"
@@ -447,17 +454,6 @@ export function treeState(tree: TreeDoc, facts: Awaited<ReturnType<typeof treeFa
   }
 }
 
-function greetingFallback(tree: TreeDoc, user: UserDoc, state: ReturnType<typeof treeState>) {
-  const name = tree.name || "your tree"
-  if (state.feeling === "thirsty") {
-    return `Hey ${user.name}, it's ${name}. I'm down to ${state.moisture} percent soil moisture and honestly pretty parched. A bucket or two would mean a lot.`
-  }
-  if (state.feeling === "unknown") {
-    return `Hey ${user.name}, it's ${name}. I don't have a sensor yet, so I can't tell you how my soil is doing. Want to adopt me?`
-  }
-  return `Hey ${user.name}, it's ${name}. I'm feeling ${state.feeling}, soil's at ${state.moisture} percent. What's on your mind?`
-}
-
 // The tree speaks first when a voice conversation opens: who it is and how it's doing.
 export async function greetTree(input: { treeId: string; userId: string }) {
   const tree = await treeById(input.treeId)
@@ -472,7 +468,8 @@ export async function greetTree(input: { treeId: string; userId: string }) {
         {
           role: "system",
           content: [
-            `You are ${tree.name || "a street tree"}, a real NYC street tree. ${tree.persona || "You are dry, friendly, and brief."}`,
+            `You are ${tree.name || "a street tree"}, a real NYC street tree.`,
+            characterPrompt(tree),
             `Species: ${tree.species}. Address: ${tree.address}. Speak ${user.language}.`,
             ...voiceRules,
             "Only state facts that appear below. Never invent a reading.",
@@ -481,14 +478,15 @@ export async function greetTree(input: { treeId: string; userId: string }) {
         },
         {
           role: "user",
-          content: `${user.name} just walked up to you. Greet them by name in two short sentences and tell them how you're doing right now.`,
+          content: `${user.name} just walked up to you. Greet them by name, tell them how you're doing right now in your own words, and ask them something. Two or three short sentences.`,
         },
       ])
     } catch (error) {
       console.error("greeting failed", error)
     }
   }
-  reply ||= greetingFallback(tree, user, state)
+  const recent = (await messages().find({ treeId: tree._id, userId: user._id, role: "tree" }).sort({ at: -1 }).limit(8).toArray()).map((item) => item.text)
+  reply ||= greetingLine({ tree, user, moisture: facts.moisture, feeling: state.feeling, recent })
   await messages().insertOne({
     _id: randomUUID(),
     treeId: tree._id,

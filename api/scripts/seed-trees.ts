@@ -1,6 +1,7 @@
 import "dotenv/config"
 import { connectMongo, collection } from "../src/db/mongo.ts"
 import { GUS_BLOCK, GUS_ID, GUS_SENSOR } from "../src/env.ts"
+import { GUS_BACKSTORY, GUS_PERSONA } from "../src/services/character.ts"
 import type { BlockDoc, TreeDoc, UserDoc, WateringDoc } from "../src/types.ts"
 
 const center = { lat: 40.8075, lng: -73.9626 }
@@ -109,13 +110,14 @@ const gus = blankTree({
   address: "Amsterdam Ave near 116th St",
   blockId: GUS_BLOCK,
   name: "Gus",
-  persona:
-    "Gus is a young pin oak who texts like a neighbor you actually like. Short sentences. Dramatic only about water.",
+  persona: GUS_PERSONA,
+  backstory: GUS_BACKSTORY,
   sensorId: GUS_SENSOR,
   adopterIds: ["neighbor-maya", "neighbor-luis"],
   status: "ok",
 })
 await trees.updateOne({ _id: GUS_ID }, { $setOnInsert: gus }, { upsert: true })
+await trees.updateOne({ _id: GUS_ID }, { $set: { persona: GUS_PERSONA, backstory: GUS_BACKSTORY } })
 await trees.updateOne(
   { _id: GUS_ID },
   { $addToSet: { adopterIds: { $each: ["neighbor-maya", "neighbor-luis"] } } },

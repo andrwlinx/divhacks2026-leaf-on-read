@@ -13,6 +13,7 @@ import {
   useAudioPlayerStatus,
   useAudioRecorder,
 } from "expo-audio"
+import { File as RecordingFile } from "expo-file-system"
 import * as Haptics from "expo-haptics"
 import { Stack, useLocalSearchParams } from "expo-router"
 import * as Speech from "expo-speech"
@@ -187,7 +188,8 @@ export default function TalkScreen() {
     }
     const form = new FormData()
     form.append("userId", user?._id ?? "")
-    form.append("audio", { uri: recorder.uri, name: "talk.m4a", type: "audio/m4a" } as unknown as Blob)
+    // expo/fetch rejects React Native's { uri, name, type } parts; an expo-file-system File streams its bytes.
+    form.append("audio", new RecordingFile(recorder.uri) as unknown as Blob)
     await send(form)
   }
 

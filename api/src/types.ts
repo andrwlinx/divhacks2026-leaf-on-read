@@ -12,6 +12,7 @@ export type TreeDoc = {
   blockId: string
   name: string | null
   persona: string | null
+  backstory?: string | null
   sensorId: string | null
   adopterIds: string[]
   thirstThreshold: number
@@ -28,6 +29,8 @@ export type TreeDoc = {
 export type UserDoc = {
   _id: string
   phone: string
+  // iMessage sender handle (phone or Apple ID email), linked by the join code.
+  imessageId?: string | null
   name: string
   blockId: string
   language: string

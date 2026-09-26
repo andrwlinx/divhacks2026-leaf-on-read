@@ -155,12 +155,26 @@ export function createApp() {
     return c.json(user, existing ? 200 : 201)
   })
 
+  // The agent resolves an iMessage sender: by join code, by linked handle, or by phone digits.
   app.get("/users/lookup", async (c) => {
     const code = c.req.query("code")
-    if (!code) return c.json({ error: "code required" }, 400)
-    const user = await users().findOne({ userCode: code.toUpperCase() })
+    const handle = c.req.query("handle")
+    if (!code && !handle) return c.json({ error: "code or handle required" }, 400)
+    const user = code ? await users().findOne({ userCode: code.toUpperCase() }) : await userByHandle(handle!)
     if (!user) return c.json({ error: "not found" }, 404)
-    return c.json(user)
+    return c.json({ ...user, treeId: await homeTree(user._id) })
+  })
+
+  // "Hi 🌳 join AB12CD" from iMessage ties that sender to the app user.
+  app.post("/users/link", zValidator("json", z.object({ code: z.string().min(4), handle: z.string().min(3) })), async (c) => {
+    const body = c.req.valid("json")
+    const user = await users().findOneAndUpdate(
+      { userCode: body.code.toUpperCase() },
+      { $set: { imessageId: body.handle } },
+      { returnDocument: "after" },
+    )
+    if (!user) return c.json({ error: "not found" }, 404)
+    return c.json({ ...user, treeId: await homeTree(user._id) })
   })
 
   app.get("/users/:id/alerts", async (c) => {
@@ -271,7 +285,12 @@ export function createApp() {
     const audio = form.audio
     if (!transcript && audio instanceof File) {
       if (!speechConfigured()) return c.json({ error: "speech-to-text is not configured" }, 503)
-      transcript = await transcribe(audio, audio.name || "talk.m4a")
+      try {
+        transcript = await transcribe(audio, audio.name || "talk.m4a")
+      } catch (error) {
+        console.error(error)
+        return c.json({ error: "speech-to-text is unavailable" }, 503)
+      }
     }
     if (!transcript) return c.json({ error: "didn't catch that" }, 422)
     const user = await users().findOne({ _id: userId })
@@ -352,6 +371,24 @@ export function createApp() {
   app.get("/demo/gus", (c) => c.json({ id: GUS_ID, blockId: GUS_BLOCK, publicApiUrl }))
 
   return app
+}
+
+const digits = (value: string) => value.replace(/\D/g, "").slice(-10)
+
+async function userByHandle(handle: string) {
+  const linked = await users().findOne({ imessageId: handle })
+  if (linked || !/\d{10}/.test(handle.replace(/\D/g, ""))) return linked
+  const wanted = digits(handle)
+  const candidates = await users().find({ phone: { $regex: wanted.slice(-4) + "$" } }).toArray()
+  return candidates.find((user) => digits(user.phone) === wanted) ?? null
+}
+
+// The tree a neighbor's thread talks to: a sensor tree they adopted, else any adopted tree, else Gus.
+async function homeTree(userId: string) {
+  const sensor = await trees().findOne({ adopterIds: userId, sensorId: { $ne: null } })
+  if (sensor) return sensor._id
+  const any = await trees().findOne({ adopterIds: userId })
+  return any?._id ?? GUS_ID
 }
 
 function publicTree(tree: TreeDoc) {
