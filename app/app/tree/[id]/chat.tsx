@@ -2,6 +2,7 @@ import { Icon } from "@/components/icon"
 import { TreeBuddy } from "@/components/tree-buddy"
 import { colors, radius, rounded, statusMeta } from "@/constants/design"
 import { api } from "@/lib/api"
+import { markChatRead } from "@/lib/chat-read"
 import { useSession } from "@/lib/session"
 import type { ChatMessage, TreeDetail } from "@/lib/types"
 import { Stack, useLocalSearchParams, useRouter } from "expo-router"
@@ -30,6 +31,11 @@ export default function ChatScreen() {
   const load = useCallback(async () => {
     setMessages(await fetchMessages())
   }, [fetchMessages])
+
+  // Opening a conversation (and every new message while it's open) clears its unread dot in the Chats tab.
+  useEffect(() => {
+    if (id) void markChatRead(id)
+  }, [id, messages.length])
 
   useEffect(() => {
     if (!id || !user) return

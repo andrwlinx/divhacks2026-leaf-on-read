@@ -9,6 +9,7 @@ import { demoMode, GUS_BLOCK, GUS_ID, publicApiUrl } from "./env.ts"
 import { alertText } from "./copy.ts"
 import { speechConfigured, transcribe } from "./lib/speech.ts"
 import { cachedVoice, clipAudio, speakClip, synthesizeVoice } from "./lib/voice.ts"
+import { pushTree } from "./lib/deepspace.ts"
 import {
   blockLeaderboard,
   chatWithTree,
@@ -176,6 +177,80 @@ export function createApp() {
     return c.json({ ...user, treeId: await homeTree(user._id) })
   })
 
+  // Trees this neighbor adopted, thirsty first, with live moisture for the My trees tab.
+  app.get("/users/:id/trees", async (c) => {
+    const rows = await trees().find({ adopterIds: c.req.param("id") }).toArray()
+    const withReadings = await Promise.all(
+      rows.map(async (tree) => {
+        const latest = tree.sensorId ? await latestReading(tree._id) : null
+        return {
+          ...publicTree(tree),
+          persona: tree.persona,
+          claim: tree.claim && Date.parse(tree.claim.until) > Date.now() ? tree.claim : null,
+          moisture: latest?.moisture ?? null,
+        }
+      }),
+    )
+    const rank = { thirsty: 0, ok: 1, no_sensor: 2 } as const
+    withReadings.sort((a, b) => rank[a.status] - rank[b.status] || (a.name ?? a.species).localeCompare(b.name ?? b.species))
+    return c.json(withReadings)
+  })
+
+  // One row per tree this neighbor has talked to (app or iMessage), newest conversation first.
+  app.get("/users/:id/chats", async (c) => {
+    const rows = await messages()
+      .aggregate<{ _id: string; text: string; role: "user" | "tree"; at: string }>([
+        { $match: { userId: c.req.param("id") } },
+        { $sort: { at: -1 } },
+        { $group: { _id: "$treeId", text: { $first: "$text" }, role: { $first: "$role" }, at: { $first: "$at" } } },
+        { $sort: { at: -1 } },
+        { $limit: 50 },
+      ])
+      .toArray()
+    const byId = new Map((await trees().find({ _id: { $in: rows.map((row) => row._id) } }).toArray()).map((tree) => [tree._id, tree]))
+    return c.json(
+      rows.flatMap((row) => {
+        const tree = byId.get(row._id)
+        if (!tree) return []
+        return [{
+          treeId: row._id,
+          treeName: tree.name ?? tree.species,
+          status: tree.status,
+          last: { text: row.text, role: row.role, at: row.at },
+        }]
+      }),
+    )
+  })
+
+  app.get("/users/:id/stats", async (c) => {
+    const user = await users().findOne({ _id: c.req.param("id") })
+    if (!user) return c.json({ error: "not found" }, 404)
+    const [board, adopted] = await Promise.all([
+      blockLeaderboard(user.blockId),
+      trees().countDocuments({ adopterIds: user._id }),
+    ])
+    const index = board.findIndex((row) => row.userId === user._id)
+    const mine = board[index]
+    return c.json({
+      gallons: mine?.gallons ?? 0,
+      waterings: await waterings().countDocuments({ userId: user._id }),
+      streak: mine?.streak ?? 0,
+      trees: adopted,
+      rank: index >= 0 ? index + 1 : null,
+      neighbors: board.length,
+    })
+  })
+
+  app.patch("/users/:id", zValidator("json", z.object({
+    name: z.string().trim().min(1).max(40).optional(),
+    language: z.string().min(2).max(5).optional(),
+  })), async (c) => {
+    const patch = c.req.valid("json")
+    const user = await users().findOneAndUpdate({ _id: c.req.param("id") }, { $set: patch }, { returnDocument: "after" })
+    if (!user) return c.json({ error: "not found" }, 404)
+    return c.json(user)
+  })
+
   app.get("/users/:id/alerts", async (c) => {
     const since = c.req.query("since")
     const filter: Record<string, unknown> = { userId: c.req.param("id") }
@@ -195,12 +270,11 @@ export function createApp() {
     const tree = await treeById(c.req.param("id"))
     if (!tree) return c.json({ error: "not found" }, 404)
     const { userId, name } = c.req.valid("json")
-    const persona = await suggestPersona(tree, name)
-    await trees().updateOne(
-      { _id: tree._id },
-      { $set: { name, persona }, $addToSet: { adopterIds: userId } },
-    )
+    // A tree that already has a name (Gus) keeps it and its personality; new adopters just join its caretakers.
+    const naming = tree.name ? {} : { name, persona: await suggestPersona(tree, name) }
+    await trees().updateOne({ _id: tree._id }, { $set: naming, $addToSet: { adopterIds: userId } })
     const next = await treeById(tree._id)
+    if (next) pushTree(next, undefined, true)
     return c.json(next)
   })
 
@@ -328,6 +402,34 @@ export function createApp() {
   app.get("/blocks", async (c) => {
     const rows = await blocks().find().toArray()
     return c.json(rows)
+  })
+
+  // Recent waterings on the block plus who is thirsty right now, for the Block tab.
+  app.get("/blocks/:id/activity", async (c) => {
+    const blockId = c.req.param("id")
+    const blockTrees = await trees().find({ blockId }).toArray()
+    const treeNames = new Map(blockTrees.map((tree) => [tree._id, tree.name ?? tree.species]))
+    const logs = await waterings()
+      .find({ treeId: { $in: blockTrees.map((tree) => tree._id) } })
+      .sort({ at: -1 })
+      .limit(25)
+      .toArray()
+    const people = new Map(
+      (await users().find({ _id: { $in: [...new Set(logs.map((log) => log.userId))] } }).toArray()).map((user) => [user._id, user.name]),
+    )
+    return c.json({
+      waterings: logs.map((log) => ({
+        id: log._id,
+        treeId: log.treeId,
+        treeName: treeNames.get(log.treeId) ?? "a tree",
+        name: people.get(log.userId) ?? "A neighbor",
+        gallons: log.gallons,
+        at: log.at,
+      })),
+      thirsty: blockTrees
+        .filter((tree) => tree.status === "thirsty")
+        .map((tree) => ({ id: tree._id, name: tree.name ?? tree.species, claimedBy: tree.claim?.name ?? null })),
+    })
   })
 
   app.get("/blocks/:id/leaderboard", async (c) => c.json(await blockLeaderboard(c.req.param("id"))))

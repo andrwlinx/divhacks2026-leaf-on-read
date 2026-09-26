@@ -594,7 +594,7 @@ export async function suggestPersona(tree: TreeDoc, name: string) {
     {
       role: "system",
       content:
-        "Write a two-sentence personality for an NYC street tree that texts its neighbors. Concrete, warm, a little dry. No hashtags.",
+        "Describe the personality of an NYC street tree that texts its neighbors, in exactly two sentences, in the third person, starting with its name (e.g. \"Maple is a …\"). Give it a concrete quirk tied to its species or street, warm and a little dry. It is a character description, not a message: no greeting, no second person, no hashtags or emoji.",
     },
     {
       role: "user",

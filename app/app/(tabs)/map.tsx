@@ -7,7 +7,7 @@ import { useSession } from "@/lib/session"
 import type { TreePin, TreeStatus } from "@/lib/types"
 import { useFocusEffect, useRouter } from "expo-router"
 import { useCallback, useState } from "react"
-import { Pressable, StyleSheet, Text, View } from "react-native"
+import { StyleSheet, Text, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 
 type Region = {
@@ -112,11 +112,8 @@ export default function MapScreen() {
         </View>
       ) : null}
 
-      <Text style={[styles.credit, { bottom: insets.bottom + 8 }]}>© Esri</Text>
-      <Pressable style={[styles.board, { bottom: insets.bottom + 18 }]} onPress={() => router.push("/leaderboard")}>
-        <Icon name="trophy.fill" color={colors.sun} size={18} />
-        <Text style={styles.boardText}>Block leaderboard</Text>
-      </Pressable>
+      {/* The tab bar sits below this screen, so no bottom safe-area inset is needed here. */}
+      <Text style={[styles.credit, { bottom: 8 }]}>© Esri</Text>
     </View>
   )
 }
@@ -160,20 +157,6 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   legendText: { fontFamily: rounded, fontWeight: "700", fontSize: 12 },
-  board: {
-    position: "absolute",
-    alignSelf: "center",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: colors.leafDeep,
-    borderRadius: 999,
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    ...shadow,
-    shadowOpacity: 0.25,
-  },
-  boardText: { color: "#fff", fontFamily: rounded, fontWeight: "800", fontSize: 16 },
   error: {
     position: "absolute",
     left: 12,

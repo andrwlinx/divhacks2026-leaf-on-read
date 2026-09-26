@@ -1,0 +1,193 @@
+import { Icon } from "@/components/icon"
+import { Avatar, Button, Card, Chip, SectionTitle } from "@/components/kit"
+import { colors, radius, rounded } from "@/constants/design"
+import { api } from "@/lib/api"
+import { clearChatReads } from "@/lib/chat-read"
+import { useSession } from "@/lib/session"
+import { languages, type MyStats, type User } from "@/lib/types"
+import * as Haptics from "expo-haptics"
+import * as Linking from "expo-linking"
+import { useFocusEffect, useRouter } from "expo-router"
+import { useCallback, useState } from "react"
+import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
+
+export default function Me() {
+  const router = useRouter()
+  const { user, saveUser, clearUser } = useSession()
+  const [stats, setStats] = useState<MyStats | null>(null)
+  const [name, setName] = useState(user?.name ?? "")
+  const [note, setNote] = useState("")
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!user) return
+      api<MyStats>(`/users/${user._id}/stats`).then(setStats, () => null)
+    }, [user]),
+  )
+
+  async function update(patch: Partial<Pick<User, "name" | "language">>) {
+    if (!user) return
+    try {
+      const next = await api<User>(`/users/${user._id}`, { method: "PATCH", body: JSON.stringify(patch) })
+      await saveUser(next)
+      void Haptics.selectionAsync()
+      setNote(patch.language ? "Your trees will talk to you in this language now." : "Saved.")
+    } catch (error) {
+      setNote(error instanceof Error ? error.message : "Couldn't save that.")
+    }
+  }
+
+  if (!user) return null
+  const agent = process.env.EXPO_PUBLIC_AGENT_PHONE
+
+  return (
+    <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
+      <View style={styles.hero}>
+        <Avatar name={user.name} size={72} />
+        <Text style={styles.heroName}>{user.name}</Text>
+        {stats?.rank ? (
+          <Text style={styles.heroMeta}>
+            #{stats.rank} of {stats.neighbors} neighbors on your block
+          </Text>
+        ) : null}
+      </View>
+
+      <View style={styles.stats}>
+        <Stat value={stats?.gallons} label="gallons" icon="drop.fill" color={colors.water} />
+        <Stat value={stats?.waterings} label="waterings" icon="checkmark.circle.fill" color={colors.leaf} />
+        <Stat value={stats?.streak} label="day streak" icon="flame.fill" color="#F28C38" />
+        <Stat value={stats?.trees} label="trees" icon="leaf.fill" color={colors.leafDeep} />
+      </View>
+
+      <Card>
+        <SectionTitle icon="person.fill" title="Your name" color={colors.leafDeep} />
+        <View style={styles.nameRow}>
+          <TextInput
+            style={styles.input}
+            value={name}
+            onChangeText={setName}
+            maxLength={40}
+            returnKeyType="done"
+            onSubmitEditing={() => name.trim() && name.trim() !== user.name && void update({ name: name.trim() })}
+          />
+          <Button
+            label="Save"
+            variant="soft"
+            disabled={!name.trim() || name.trim() === user.name}
+            onPress={() => void update({ name: name.trim() })}
+          />
+        </View>
+      </Card>
+
+      <Card>
+        <SectionTitle icon="character.bubble.fill" title="Your trees speak…" color={colors.leafDeep} />
+        <View style={styles.chips}>
+          {languages.map((item) => (
+            <Chip
+              key={item.code}
+              label={item.label}
+              on={user.language === item.code}
+              onPress={() => item.code !== user.language && void update({ language: item.code })}
+            />
+          ))}
+        </View>
+      </Card>
+
+      {note ? <Text style={styles.note}>{note}</Text> : null}
+
+      <Card>
+        <SectionTitle icon="message.fill" title="Texts from your trees" color={colors.leafDeep} />
+        <Text style={styles.body}>
+          Your trees text you on iMessage when they&apos;re thirsty. If you haven&apos;t yet, say hi so they know it&apos;s you.
+        </Text>
+        <View style={styles.codeRow}>
+          <Text style={styles.meta}>Your join code</Text>
+          <Text style={styles.code}>{user.userCode}</Text>
+        </View>
+        {agent ? (
+          <Button
+            label="Text Gus on iMessage"
+            icon="message.fill"
+            color={colors.leaf}
+            onPress={() => void Linking.openURL(`sms:${agent}&body=${encodeURIComponent(`Hi 🌳 join ${user.userCode}`)}`)}
+          />
+        ) : null}
+      </Card>
+
+      <Button
+        label="Reset this phone"
+        icon="arrow.counterclockwise"
+        variant="outline"
+        color={colors.thirsty}
+        onPress={() =>
+          Alert.alert("Reset this phone?", "You'll go back to onboarding. Your trees and waterings stay saved.", [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Reset",
+              style: "destructive",
+              onPress: async () => {
+                await clearChatReads()
+                await clearUser()
+                router.replace("/onboarding")
+              },
+            },
+          ])
+        }
+      />
+    </ScrollView>
+  )
+}
+
+function Stat({
+  value,
+  label,
+  icon,
+  color,
+}: {
+  value: number | undefined
+  label: string
+  icon: "drop.fill" | "checkmark.circle.fill" | "flame.fill" | "leaf.fill"
+  color: string
+}) {
+  return (
+    <View style={styles.stat}>
+      <Icon name={icon} color={color} size={18} />
+      <Text style={[styles.statValue, { color }]}>{value ?? "—"}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  )
+}
+
+const styles = StyleSheet.create({
+  page: { padding: 16, gap: 14, paddingBottom: 40 },
+  hero: { alignItems: "center", gap: 6, paddingVertical: 6 },
+  heroName: { fontFamily: rounded, fontSize: 28, fontWeight: "800", color: colors.ink },
+  heroMeta: { color: colors.inkSoft, fontWeight: "600" },
+  stats: { flexDirection: "row", gap: 8 },
+  stat: {
+    flex: 1,
+    alignItems: "center",
+    gap: 2,
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    paddingVertical: 12,
+  },
+  statValue: { fontFamily: rounded, fontSize: 22, fontWeight: "800" },
+  statLabel: { color: colors.inkSoft, fontSize: 11, fontWeight: "600" },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  input: {
+    flex: 1,
+    backgroundColor: colors.bg,
+    borderRadius: radius.sm,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: colors.ink,
+  },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  note: { color: colors.leafDeep, fontWeight: "700", textAlign: "center" },
+  body: { color: colors.inkSoft, lineHeight: 21 },
+  codeRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  meta: { color: colors.inkSoft },
+  code: { fontFamily: rounded, fontSize: 20, fontWeight: "800", letterSpacing: 2, color: colors.ink },
+})

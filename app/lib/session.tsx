@@ -15,6 +15,8 @@ type Session = {
   setPin: (id: string, status: TreeStatus) => void
   reconcilePins: (rows: { id: string; status: TreeStatus }[]) => void
   saveUser: (user: User) => Promise<void>
+  /** Forget this phone's neighbor (demo hand-off); the app returns to onboarding. */
+  clearUser: () => Promise<void>
 }
 
 const SessionContext = createContext<Session | null>(null)
@@ -84,6 +86,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       saveUser: async (next) => {
         await SecureStore.setItemAsync(KEY, JSON.stringify(next))
         setUser(next)
+      },
+      clearUser: async () => {
+        await SecureStore.deleteItemAsync(KEY)
+        setBanner(null)
+        setUser(null)
       },
     }),
     [ready, user, demoMode, banner, pinOverrides],

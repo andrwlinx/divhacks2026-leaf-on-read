@@ -10,7 +10,7 @@ import * as ImagePicker from "expo-image-picker"
 import * as Linking from "expo-linking"
 import { useLocalSearchParams, useRouter } from "expo-router"
 import { useCallback, useEffect, useState } from "react"
-import { Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
+import { Dimensions, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 import { LineChart } from "react-native-gifted-charts"
 
 export default function TreeScreen() {
@@ -23,6 +23,8 @@ export default function TreeScreen() {
   const [photo, setPhoto] = useState<string | null>(null)
   const [demoOpen, setDemoOpen] = useState(false)
   const [note, setNote] = useState("")
+  const [adoptName, setAdoptName] = useState("")
+  const [adopting, setAdopting] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const fetchTree = useCallback(
@@ -89,6 +91,24 @@ export default function TreeScreen() {
     }
   }
 
+  async function adopt() {
+    if (!user || !id || !tree) return
+    setAdopting(true)
+    try {
+      await api(`/trees/${id}/adopt`, {
+        method: "POST",
+        body: JSON.stringify({ userId: user._id, name: tree.name ?? (adoptName.trim() || tree.species) }),
+      })
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+      await load()
+      setNote(`Meet ${tree.name ?? (adoptName.trim() || "your tree")}! It'll text you when it's thirsty. 🌱`)
+    } catch (error) {
+      setNote(error instanceof Error ? error.message : "Couldn't adopt right now.")
+    } finally {
+      setAdopting(false)
+    }
+  }
+
   async function claim() {
     if (!user || !id) return
     try {
@@ -127,6 +147,7 @@ export default function TreeScreen() {
   const agent = process.env.EXPO_PUBLIC_AGENT_PHONE
   const name = tree.name || tree.species
   const mine = tree.claim && user && tree.claim.userId === user._id
+  const adopted = Boolean(user && tree.caretakers.some((person) => person.id === user._id))
 
   return (
     <ScrollView contentContainerStyle={styles.page}>
@@ -145,6 +166,37 @@ export default function TreeScreen() {
           onPress={() => router.push({ pathname: "/tree/[id]/talk", params: { id: tree.id } })}
         />
       </View>
+
+      {!adopted ? (
+        <Card style={styles.adopt}>
+          <SectionTitle icon="heart.fill" title={tree.name ? `Help take care of ${tree.name}` : "Adopt this tree"} color={colors.leafDeep} />
+          <Text style={styles.adoptText}>
+            {tree.name
+              ? `Join ${tree.caretakers.length} neighbor${tree.caretakers.length === 1 ? "" : "s"} who get a text when ${tree.name} is thirsty.`
+              : "Give it a name and it gets a personality of its own. It'll text you when it needs water."}
+          </Text>
+          {!tree.name ? (
+            <TextInput
+              style={styles.adoptInput}
+              value={adoptName}
+              onChangeText={setAdoptName}
+              placeholder={`Name your ${tree.species}`}
+              placeholderTextColor={colors.muted}
+              maxLength={24}
+              returnKeyType="done"
+              onSubmitEditing={() => void adopt()}
+            />
+          ) : null}
+          <Button
+            label={tree.name ? `Adopt ${tree.name} too` : "Adopt & name it"}
+            icon="leaf.fill"
+            color={colors.leafDeep}
+            busy={adopting}
+            onPress={() => void adopt()}
+          />
+          {adopting && !tree.name ? <Text style={styles.adoptText}>Grok is getting to know your tree…</Text> : null}
+        </Card>
+      ) : null}
 
       {tree.persona ? (
         <Card style={styles.quote}>
@@ -319,6 +371,16 @@ const styles = StyleSheet.create({
   name: { fontFamily: rounded, fontSize: 32, fontWeight: "800", color: colors.ink },
   meta: { color: colors.inkSoft, textAlign: "center" },
   talk: { alignSelf: "stretch", marginTop: 8 },
+  adopt: { borderWidth: 2, borderColor: colors.leaf },
+  adoptText: { color: colors.inkSoft, lineHeight: 20 },
+  adoptInput: {
+    backgroundColor: colors.bg,
+    borderRadius: radius.sm,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: colors.ink,
+  },
   quote: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
   persona: { flex: 1, color: colors.ink, lineHeight: 22, fontStyle: "italic" },
   claim: {

@@ -81,3 +81,33 @@ export type TalkTurn = {
   audioUrl: string | null
   transcript?: string
 }
+
+export type MyTree = TreePin & {
+  persona: string | null
+  claim: { userId: string; name: string; until: string } | null
+  moisture: number | null
+  adopters: number
+  lastWateredAt: string | null
+  threshold: number
+}
+
+export type ChatSummary = {
+  treeId: string
+  treeName: string
+  status: TreeStatus
+  last: { text: string; role: "user" | "tree"; at: string }
+}
+
+export type MyStats = {
+  gallons: number
+  waterings: number
+  streak: number
+  trees: number
+  rank: number | null
+  neighbors: number
+}
+
+export type BlockActivity = {
+  waterings: { id: string; treeId: string; treeName: string; name: string; gallons: number; at: string }[]
+  thirsty: { id: string; name: string; claimedBy: string | null }[]
+}
