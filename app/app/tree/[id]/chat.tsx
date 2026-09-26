@@ -18,10 +18,12 @@ export default function ChatScreen() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
   const list = useRef<FlatList<ChatMessage>>(null)
+  const pending = useRef(0)
   const [tree, setTree] = useState<TreeDetail | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [draft, setDraft] = useState("")
   const [sending, setSending] = useState(false)
+  const [failed, setFailed] = useState<string | null>(null)
 
   const fetchMessages = useCallback(
     () => api<ChatMessage[]>(`/trees/${id}/chat?userId=${user?._id}&limit=50`),
@@ -46,11 +48,14 @@ export default function ChatScreen() {
   async function send(text = draft) {
     if (!id || !user || !text.trim() || sending) return
     const message = text.trim()
+    pending.current += 1
+    const pendingId = `pending-${pending.current}`
     setDraft("")
     setSending(true)
+    setFailed(null)
     setMessages((rows) => [
-      ...rows,
-      { _id: `pending-${Date.now()}`, role: "user", text: message, at: new Date().toISOString() },
+      ...rows.filter((row) => !row._id.startsWith("failed-")),
+      { _id: pendingId, role: "user", text: message, at: "" },
     ])
     try {
       await api(`/trees/${id}/chat`, {
@@ -58,6 +63,10 @@ export default function ChatScreen() {
         body: JSON.stringify({ userId: user._id, message, channel: "app" }),
       })
       await load()
+    } catch {
+      // Keep the bubble so nothing vanishes; tapping it sends again.
+      setMessages((rows) => rows.map((row) => (row._id === pendingId ? { ...row, _id: `failed-${pendingId}` } : row)))
+      setFailed(message)
     } finally {
       setSending(false)
     }
@@ -80,7 +89,9 @@ export default function ChatScreen() {
           ),
           headerRight: () => (
             <Pressable
-              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel={`Talk to ${name} out loud`}
+              hitSlop={12}
               onPress={() => id && router.push({ pathname: "/tree/[id]/talk", params: { id } })}
             >
               <Icon name="mic.fill" color={colors.leafDeep} size={20} />
@@ -115,9 +126,23 @@ export default function ChatScreen() {
         }
         renderItem={({ item }) =>
           item.role === "user" ? (
-            <View style={[styles.bubble, styles.mine]}>
-              <Text style={styles.mineText}>{item.text}</Text>
-            </View>
+            item._id.startsWith("failed-") ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Not sent: ${item.text}. Tap to try again`}
+                onPress={() => failed && void send(failed)}
+                style={styles.failedWrap}
+              >
+                <View style={[styles.bubble, styles.mine, { opacity: 0.6 }]}>
+                  <Text style={styles.mineText}>{item.text}</Text>
+                </View>
+                <Text style={styles.failed}>Not sent · Tap to retry</Text>
+              </Pressable>
+            ) : (
+              <View style={[styles.bubble, styles.mine]}>
+                <Text style={styles.mineText}>{item.text}</Text>
+              </View>
+            )
           ) : (
             <View style={styles.row}>
               <View style={styles.bubbleAvatar}>
@@ -133,7 +158,13 @@ export default function ChatScreen() {
       {messages.length === 0 ? (
         <View style={styles.suggestions}>
           {suggestions.map((text) => (
-            <Pressable key={text} style={styles.suggestion} onPress={() => void send(text)}>
+            <Pressable
+              key={text}
+              accessibilityRole="button"
+              accessibilityLabel={`Send: ${text}`}
+              style={styles.suggestion}
+              onPress={() => void send(text)}
+            >
               <Text style={styles.suggestionText}>{text}</Text>
             </Pressable>
           ))}
@@ -141,20 +172,24 @@ export default function ChatScreen() {
       ) : null}
       <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, 10) }]}>
         <TextInput
+          accessibilityLabel={`Message ${name}`}
           style={styles.input}
           value={draft}
           onChangeText={setDraft}
           placeholder={`Text ${name}…`}
-          placeholderTextColor={colors.muted}
+          placeholderTextColor={colors.inkSoft}
           onSubmitEditing={() => void send()}
           returnKeyType="send"
         />
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Send"
+          accessibilityState={{ disabled: !draft.trim() || sending }}
           style={[styles.send, (!draft.trim() || sending) && { opacity: 0.4 }]}
           onPress={() => void send()}
           disabled={!draft.trim() || sending}
         >
-          <Icon name="arrow.up" color="#fff" size={16} weight="bold" />
+          <Icon name="arrow.up" color="#fff" size={18} weight="bold" />
         </Pressable>
       </View>
     </KeyboardAvoidingView>
@@ -189,19 +224,22 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   bubble: { maxWidth: "78%", borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10 },
-  mine: { alignSelf: "flex-end", backgroundColor: colors.leaf, borderBottomRightRadius: 6 },
+  mine: { alignSelf: "flex-end", backgroundColor: colors.leafDeep, borderBottomRightRadius: 6 },
+  failedWrap: { alignSelf: "flex-end", alignItems: "flex-end", gap: 4, maxWidth: "78%" },
+  failed: { color: colors.thirstyText, fontSize: 13, fontWeight: "700" },
   theirs: { backgroundColor: colors.card, borderBottomLeftRadius: 6 },
   body: { color: colors.ink, fontSize: 16, lineHeight: 21 },
   mineText: { color: "#fff", fontSize: 16, lineHeight: 21 },
-  typing: { color: colors.muted, fontWeight: "800", letterSpacing: 2 },
+  typing: { color: colors.inkSoft, fontWeight: "800", letterSpacing: 2 },
   suggestions: { flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: 16, paddingBottom: 10 },
   suggestion: {
     backgroundColor: colors.mint,
     borderRadius: radius.pill,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    minHeight: 44,
+    justifyContent: "center",
   },
-  suggestionText: { color: colors.leafDeep, fontWeight: "700" },
+  suggestionText: { color: colors.leafDeep, fontWeight: "700", fontSize: 15 },
   composer: {
     flexDirection: "row",
     alignItems: "center",
@@ -222,10 +260,10 @@ const styles = StyleSheet.create({
     color: colors.ink,
   },
   send: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.leaf,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.leafDeep,
     alignItems: "center",
     justifyContent: "center",
   },

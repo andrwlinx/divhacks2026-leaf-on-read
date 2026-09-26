@@ -268,7 +268,9 @@ export default function TalkScreen() {
       </ScrollView>
 
       <View style={[styles.controls, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-        <Text style={styles.status}>{status}</Text>
+        <Text style={styles.status} accessibilityLiveRegion="polite">
+          {status}
+        </Text>
         {typing ? (
           <View style={styles.composer}>
             <TextInput
@@ -276,20 +278,26 @@ export default function TalkScreen() {
               value={draft}
               onChangeText={setDraft}
               placeholder={`Say something to ${name}…`}
-              placeholderTextColor={colors.muted}
+              placeholderTextColor={colors.inkSoft}
+              accessibilityLabel={`Say something to ${name}`}
               onSubmitEditing={() => void sendText()}
               returnKeyType="send"
               autoFocus
             />
             <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Send"
               style={[styles.send, (!draft.trim() || phase !== "idle") && { opacity: 0.4 }]}
               onPress={() => void sendText()}
             >
-              <Icon name="arrow.up" color="#fff" size={16} weight="bold" />
+              <Icon name="arrow.up" color="#fff" size={18} weight="bold" />
             </Pressable>
           </View>
         ) : (
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={phase === "listening" ? "Listening. Let go to send" : `Hold to talk to ${name}`}
+            accessibilityState={{ disabled: phase === "thinking", busy: phase === "thinking" }}
             onPressIn={() => void startListening()}
             onPressOut={() => void stopListening()}
             disabled={phase === "thinking"}
@@ -303,16 +311,17 @@ export default function TalkScreen() {
           </Pressable>
         )}
         <View style={styles.links}>
-          <Pressable onPress={() => setTyping((open) => !open)} hitSlop={10}>
+          <Pressable accessibilityRole="button" style={styles.linkHit} onPress={() => setTyping((open) => !open)}>
             <Text style={styles.link}>{typing ? "Use my voice" : "Type instead"}</Text>
           </Pressable>
           {speaking ? (
             <Pressable
+              accessibilityRole="button"
+              style={styles.linkHit}
               onPress={() => {
                 player.pause()
                 Speech.stop()
               }}
-              hitSlop={10}
             >
               <Text style={styles.link}>Stop talking</Text>
             </Pressable>
@@ -337,13 +346,13 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   stateRow: { alignItems: "center", gap: 6 },
-  feeling: { fontFamily: rounded, fontWeight: "700", color: colors.inkSoft },
+  feeling: { fontFamily: rounded, fontWeight: "700", fontSize: 15, color: colors.inkSoft },
   bubble: { maxWidth: "88%", borderRadius: 22, paddingHorizontal: 16, paddingVertical: 12 },
-  mine: { alignSelf: "flex-end", backgroundColor: colors.leaf, borderBottomRightRadius: 6 },
+  mine: { alignSelf: "flex-end", backgroundColor: colors.leafDeep, borderBottomRightRadius: 6 },
   theirs: { alignSelf: "flex-start", backgroundColor: colors.card, borderBottomLeftRadius: 6 },
   mineText: { color: "#fff", fontSize: 16, lineHeight: 21 },
   replyText: { color: colors.ink, fontSize: 18, lineHeight: 25 },
-  hint: { color: colors.thirsty, fontWeight: "600", textAlign: "center" },
+  hint: { color: colors.thirstyText, fontWeight: "600", textAlign: "center" },
   controls: {
     alignItems: "center",
     gap: 12,
@@ -362,7 +371,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  micOn: { backgroundColor: colors.thirsty, transform: [{ scale: 1.08 }] },
+  micOn: { backgroundColor: colors.thirstyText, transform: [{ scale: 1.08 }] },
   composer: { flexDirection: "row", alignItems: "center", gap: 8, alignSelf: "stretch" },
   input: {
     flex: 1,
@@ -374,13 +383,14 @@ const styles = StyleSheet.create({
     color: colors.ink,
   },
   send: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.leaf,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.leafDeep,
     alignItems: "center",
     justifyContent: "center",
   },
   links: { flexDirection: "row", gap: 24 },
-  link: { color: colors.leafDeep, fontWeight: "700" },
+  linkHit: { minHeight: 44, justifyContent: "center", paddingHorizontal: 6 },
+  link: { color: colors.leafDeep, fontWeight: "700", fontSize: 15 },
 })

@@ -1,4 +1,4 @@
-import { Avatar } from "@/components/kit"
+import { Avatar, ScreenState } from "@/components/kit"
 import { TreeBuddy } from "@/components/tree-buddy"
 import { colors, rounded, statusMeta } from "@/constants/design"
 import { api } from "@/lib/api"
@@ -7,7 +7,7 @@ import { useSession } from "@/lib/session"
 import type { ChatSummary, ThreadSummary } from "@/lib/types"
 import { useFocusEffect, useRouter } from "expo-router"
 import { useCallback, useState } from "react"
-import { Pressable, SectionList, StyleSheet, Text, View } from "react-native"
+import { Pressable, RefreshControl, SectionList, StyleSheet, Text, View } from "react-native"
 
 type Row =
   | { type: "thread"; key: string; thread: ThreadSummary }
@@ -28,6 +28,8 @@ export default function Chats() {
   const [threads, setThreads] = useState<ThreadSummary[] | null>(null)
   const [chats, setChats] = useState<ChatSummary[] | null>(null)
   const [unread, setUnread] = useState<Set<string>>(new Set())
+  const [error, setError] = useState("")
+  const [refreshing, setRefreshing] = useState(false)
 
   const load = useCallback(async () => {
     if (!user) return
@@ -39,15 +41,32 @@ export default function Chats() {
     setThreads(threadRows)
     setChats(chatRows)
     setUnread(new Set([...threadUnread, ...treeUnread]))
+    setError("")
   }, [user])
 
   useFocusEffect(
     useCallback(() => {
-      void load().catch(() => null)
-      const timer = setInterval(() => void load().catch(() => null), 5_000)
+      const safe = () =>
+        load().catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Couldn't load chats"))
+      void safe()
+      const timer = setInterval(() => void safe(), 5_000)
       return () => clearInterval(timer)
     }, [load]),
   )
+
+  async function refresh() {
+    setRefreshing(true)
+    await load().catch(() => null)
+    setRefreshing(false)
+  }
+
+  if (!threads || !chats) {
+    return error ? (
+      <ScreenState kind="error" title="Couldn't load chats" text={error} action="Try again" onAction={() => void refresh()} />
+    ) : (
+      <ScreenState kind="loading" />
+    )
+  }
 
   const sections = [
     {
@@ -66,10 +85,15 @@ export default function Chats() {
       keyExtractor={(item) => item.key}
       contentContainerStyle={styles.list}
       stickySectionHeadersEnabled={false}
-      renderSectionHeader={({ section }) => <Text style={styles.section}>{section.title}</Text>}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={colors.leafDeep} />}
+      renderSectionHeader={({ section }) => (
+        <Text accessibilityRole="header" style={styles.section}>
+          {section.title}
+        </Text>
+      )}
       ItemSeparatorComponent={() => <View style={styles.separator} />}
       ListEmptyComponent={
-        threads && chats ? (
+        (
           <View style={styles.empty}>
             <TreeBuddy mood="happy" size={110} />
             <Text style={styles.emptyTitle}>No conversations yet</Text>
@@ -78,7 +102,7 @@ export default function Chats() {
               your trees.
             </Text>
           </View>
-        ) : null
+        )
       }
       renderItem={({ item }) => {
         if (item.type === "thread") {
@@ -90,6 +114,8 @@ export default function Chats() {
             : `${thread.memberCount} caretaker${thread.memberCount === 1 ? "" : "s"} · say hi to the crew`
           return (
             <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${thread.title}${isUnread ? ", new messages" : ""}. ${preview}`}
               style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.card }]}
               onPress={() => router.push({ pathname: "/thread/[id]", params: { id: thread.id } })}
             >
@@ -119,6 +145,8 @@ export default function Chats() {
         const isUnread = unread.has(chat.treeId)
         return (
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${chat.treeName}${isUnread ? ", new messages" : ""}. ${chat.last.role === "user" ? "You: " : ""}${chat.last.text}`}
             style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.card }]}
             onPress={() => router.push({ pathname: "/tree/[id]/chat", params: { id: chat.treeId } })}
           >
@@ -149,7 +177,7 @@ const styles = StyleSheet.create({
     fontFamily: rounded,
     fontWeight: "800",
     fontSize: 13,
-    color: colors.muted,
+    color: colors.inkSoft,
     textTransform: "uppercase",
     letterSpacing: 1,
     paddingHorizontal: 16,
@@ -163,9 +191,9 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: -2,
     bottom: -2,
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
     backgroundColor: colors.leafDeep,
     alignItems: "center",
     justifyContent: "center",
@@ -173,16 +201,16 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.bg,
   },
-  crewBadgeText: { color: "#fff", fontSize: 10, fontWeight: "800" },
+  crewBadgeText: { color: "#fff", fontSize: 12, fontWeight: "800" },
   body: { flex: 1, gap: 2 },
   top: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", gap: 8 },
   name: { flex: 1, fontFamily: rounded, fontSize: 17, fontWeight: "700", color: colors.ink },
   bold: { fontWeight: "800" },
-  time: { color: colors.muted, fontSize: 13 },
-  preview: { color: colors.inkSoft, lineHeight: 19 },
+  time: { color: colors.inkSoft, fontSize: 13 },
+  preview: { color: colors.inkSoft, fontSize: 15, lineHeight: 20 },
   previewUnread: { color: colors.ink, fontWeight: "600" },
-  dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.water },
+  dot: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.waterDeep },
   empty: { alignItems: "center", gap: 8, paddingTop: 60, paddingHorizontal: 32 },
   emptyTitle: { fontFamily: rounded, fontSize: 22, fontWeight: "800", color: colors.ink },
-  emptyText: { color: colors.inkSoft, textAlign: "center", lineHeight: 21 },
+  emptyText: { color: colors.inkSoft, fontSize: 16, textAlign: "center", lineHeight: 22 },
 })

@@ -1,5 +1,5 @@
 import { Icon } from "@/components/icon"
-import { Avatar, Button } from "@/components/kit"
+import { Avatar, Button, LinkButton } from "@/components/kit"
 import { TreeBuddy } from "@/components/tree-buddy"
 import { colors, radius, rounded, statusMeta } from "@/constants/design"
 import { api } from "@/lib/api"
@@ -18,7 +18,7 @@ const crewStarters = ["I can water tonight 💧", "Who's around this weekend?", 
 export default function ThreadScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const router = useRouter()
-  const { user, flashCoins } = useSession()
+  const { user, flashCoins, toast } = useSession()
   const insets = useSafeAreaInsets()
   const list = useRef<FlatList<NeighborMessage>>(null)
   const pending = useRef(0)
@@ -27,6 +27,7 @@ export default function ThreadScreen() {
   const [sending, setSending] = useState(false)
   const [error, setError] = useState("")
   const [acting, setActing] = useState<"claim" | "water" | null>(null)
+  const [failed, setFailed] = useState<{ id: string; text: string } | null>(null)
 
   const fetchThread = useCallback(
     () => api<ThreadDetail>(`/threads/${encodeURIComponent(id ?? "")}/messages?userId=${user?._id}`),
@@ -51,6 +52,7 @@ export default function ThreadScreen() {
     const body = text.trim()
     setDraft("")
     setSending(true)
+    setFailed(null)
     pending.current += 1
     const optimistic: NeighborMessage = {
       _id: `pending-${pending.current}`,
@@ -58,17 +60,28 @@ export default function ThreadScreen() {
       senderId: user._id,
       senderName: user.name,
       text: body,
-      at: new Date().toISOString(),
+      at: "",
     }
-    setThread((current) => (current ? { ...current, messages: [...current.messages, optimistic] } : current))
+    setThread((current) =>
+      current
+        ? { ...current, messages: [...current.messages.filter((row) => !row._id.startsWith("failed-")), optimistic] }
+        : current,
+    )
     try {
       await api(`/threads/${encodeURIComponent(id)}/messages`, {
         method: "POST",
         body: JSON.stringify({ userId: user._id, text: body }),
       })
       setThread(await fetchThread())
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Couldn't send that.")
+    } catch {
+      // Keep the bubble so nothing vanishes; tapping it sends again.
+      const failedId = `failed-${optimistic._id}`
+      setThread((current) =>
+        current
+          ? { ...current, messages: current.messages.map((row) => (row._id === optimistic._id ? { ...row, _id: failedId } : row)) }
+          : current,
+      )
+      setFailed({ id: failedId, text: body })
     } finally {
       setSending(false)
     }
@@ -80,9 +93,10 @@ export default function ThreadScreen() {
     if (kind === "cancel") {
       try {
         await cancelClaim(thread.tree.id, user._id)
+        toast("No worries. The crew knows it still needs someone.")
         setThread(await fetchThread())
       } catch (caught) {
-        setError(caught instanceof Error ? caught.message : "Couldn't cancel that.")
+        toast(caught instanceof Error ? caught.message : "Couldn't cancel that.")
       }
       return
     }
@@ -95,11 +109,14 @@ export default function ThreadScreen() {
           body: JSON.stringify(kind === "claim" ? { userId: user._id } : { userId: user._id, gallons: 5, source: "app" }),
         },
       )
-      if (kind === "water") flashCoins(result?.coinsEarned ?? 0, `Watered ${thread.tree.name}`)
+      if (kind === "water") {
+        if (result?.coinsEarned) flashCoins(result.coinsEarned, `5 gallons for ${thread.tree.name} 💧`)
+        else toast(`5 gallons for ${thread.tree.name} 💧`)
+      } else toast("You're on it. The crew knows 🙌")
       setThread(await fetchThread())
     } catch (caught) {
       const claimed = caught as Error & { body?: { claim?: { name: string } } }
-      setError(claimed.body?.claim ? `${claimed.body.claim.name} already has this one.` : claimed.message)
+      toast(claimed.body?.claim ? `${claimed.body.claim.name} already has this one.` : claimed.message)
     } finally {
       setActing(null)
     }
@@ -132,7 +149,12 @@ export default function ThreadScreen() {
           ),
           headerRight: () =>
             crew && thread?.treeId ? (
-              <Pressable hitSlop={10} onPress={() => router.push({ pathname: "/tree/[id]", params: { id: thread.treeId! } })}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${thread.tree?.name ?? "the tree"}`}
+                hitSlop={12}
+                onPress={() => router.push({ pathname: "/tree/[id]", params: { id: thread.treeId! } })}
+              >
                 <Icon name="leaf.fill" color={colors.leafDeep} size={20} />
               </Pressable>
             ) : null,
@@ -188,9 +210,7 @@ export default function ThreadScreen() {
                         🙋 {tree.claim.userId === user?._id ? "You're" : `${tree.claim.name} is`} on it
                       </Text>
                       {tree.claim.userId === user?._id ? (
-                        <Pressable hitSlop={8} onPress={() => void actOnTree("cancel")}>
-                          <Text style={styles.cancelClaim}>Cancel</Text>
-                        </Pressable>
+                        <LinkButton label="Can't make it" color={colors.thirsty} onPress={() => void actOnTree("cancel")} />
                       ) : null}
                     </View>
                   ) : null}
@@ -207,7 +227,7 @@ export default function ThreadScreen() {
                         />
                       ) : null}
                       <Button
-                        label="Watered"
+                        label="I watered it"
                         icon="drop.fill"
                         color={colors.water}
                         style={styles.treeAction}
@@ -218,6 +238,21 @@ export default function ThreadScreen() {
                   ) : null}
                 </View>
               </View>
+            )
+          }
+          if (mine && failed && item._id === failed.id) {
+            return (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Not sent: ${item.text}. Tap to try again`}
+                onPress={() => void send(failed.text)}
+                style={styles.failedWrap}
+              >
+                <View style={[styles.bubble, styles.mine, { opacity: 0.6, maxWidth: "100%" }]}>
+                  <Text style={styles.mineText}>{item.text}</Text>
+                </View>
+                <Text style={styles.failed}>Not sent · Tap to retry</Text>
+              </Pressable>
             )
           }
           return mine ? (
@@ -241,7 +276,13 @@ export default function ThreadScreen() {
       {crew && thread && thread.messages.length === 0 ? (
         <View style={styles.starters}>
           {crewStarters.map((text) => (
-            <Pressable key={text} style={styles.starter} onPress={() => void send(text)}>
+            <Pressable
+              key={text}
+              accessibilityRole="button"
+              accessibilityLabel={`Send: ${text}`}
+              style={styles.starter}
+              onPress={() => void send(text)}
+            >
               <Text style={styles.starterText}>{text}</Text>
             </Pressable>
           ))}
@@ -250,21 +291,25 @@ export default function ThreadScreen() {
 
       <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, 10) }]}>
         <TextInput
+          accessibilityLabel={crew ? "Message the crew" : `Message ${title}`}
           style={styles.input}
           value={draft}
           onChangeText={setDraft}
           placeholder={crew ? "Message the crew…" : `Message ${title}…`}
-          placeholderTextColor={colors.muted}
+          placeholderTextColor={colors.inkSoft}
           onSubmitEditing={() => void send()}
           returnKeyType="send"
           maxLength={1000}
         />
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Send"
+          accessibilityState={{ disabled: !draft.trim() || sending }}
           style={[styles.send, (!draft.trim() || sending) && { opacity: 0.4 }]}
           onPress={() => void send()}
           disabled={!draft.trim() || sending}
         >
-          <Icon name="arrow.up" color="#fff" size={16} weight="bold" />
+          <Icon name="arrow.up" color="#fff" size={18} weight="bold" />
         </Pressable>
       </View>
     </KeyboardAvoidingView>
@@ -284,18 +329,20 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   headerName: { fontFamily: rounded, fontWeight: "800", fontSize: 16, color: colors.ink, maxWidth: 220 },
-  headerMeta: { color: colors.muted, fontSize: 11 },
+  headerMeta: { color: colors.inkSoft, fontSize: 12 },
   list: { padding: 16, gap: 6, flexGrow: 1 },
-  members: { color: colors.muted, textAlign: "center", fontSize: 12, marginBottom: 8 },
+  members: { color: colors.inkSoft, textAlign: "center", fontSize: 13, marginBottom: 8 },
   empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: 6, paddingTop: 40, paddingHorizontal: 20 },
   emptyTitle: { fontFamily: rounded, fontWeight: "800", fontSize: 20, color: colors.ink, textAlign: "center" },
   emptyText: { color: colors.inkSoft, textAlign: "center", lineHeight: 20 },
-  error: { color: colors.thirsty, textAlign: "center", marginTop: 40 },
+  error: { color: colors.thirstyText, textAlign: "center", marginTop: 40 },
   row: { flexDirection: "row", alignItems: "flex-end", gap: 6 },
   theirsWrap: { maxWidth: "78%", gap: 2 },
-  sender: { color: colors.muted, fontSize: 12, fontWeight: "700", marginLeft: 4 },
+  sender: { color: colors.inkSoft, fontSize: 13, fontWeight: "700", marginLeft: 4 },
   bubble: { borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10 },
-  mine: { alignSelf: "flex-end", maxWidth: "78%", backgroundColor: colors.water, borderBottomRightRadius: 6 },
+  mine: { alignSelf: "flex-end", maxWidth: "78%", backgroundColor: colors.leafDeep, borderBottomRightRadius: 6 },
+  failedWrap: { alignSelf: "flex-end", alignItems: "flex-end", gap: 4, maxWidth: "78%" },
+  failed: { color: colors.thirstyText, fontSize: 13, fontWeight: "700" },
   theirs: { backgroundColor: colors.card, borderBottomLeftRadius: 6 },
   treeAvatar: {
     width: 26,
@@ -308,15 +355,14 @@ const styles = StyleSheet.create({
   },
   treeBubble: { backgroundColor: colors.mint, borderBottomLeftRadius: 6 },
   treeActions: { flexDirection: "row", gap: 8, marginTop: 4 },
-  treeAction: { paddingVertical: 10, paddingHorizontal: 14 },
+  treeAction: { paddingHorizontal: 14 },
   claimedRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  cancelClaim: { color: colors.thirsty, fontWeight: "800", fontSize: 13, marginTop: 2 },
-  claimed: { color: colors.soil, fontWeight: "700", fontSize: 13, marginTop: 2, marginLeft: 4 },
+  claimed: { color: colors.soilDeep, fontWeight: "700", fontSize: 14, marginLeft: 4 },
   body: { color: colors.ink, fontSize: 16, lineHeight: 21 },
   mineText: { color: "#fff", fontSize: 16, lineHeight: 21 },
   starters: { flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: 16, paddingBottom: 10 },
-  starter: { backgroundColor: colors.waterSoft, borderRadius: radius.pill, paddingHorizontal: 12, paddingVertical: 8 },
-  starterText: { color: colors.water, fontWeight: "700" },
+  starter: { backgroundColor: colors.mint, borderRadius: radius.pill, paddingHorizontal: 14, minHeight: 44, justifyContent: "center" },
+  starterText: { color: colors.leafDeep, fontWeight: "700", fontSize: 15 },
   composer: {
     flexDirection: "row",
     alignItems: "center",
@@ -337,10 +383,10 @@ const styles = StyleSheet.create({
     color: colors.ink,
   },
   send: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.water,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.leafDeep,
     alignItems: "center",
     justifyContent: "center",
   },
