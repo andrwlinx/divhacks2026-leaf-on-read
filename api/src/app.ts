@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises"
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { zValidator } from "@hono/zod-validator"
@@ -9,12 +8,11 @@ import { demoState } from "./demoState.ts"
 import { demoMode, GUS_BLOCK, GUS_ID, publicApiUrl } from "./env.ts"
 import { alertText } from "./copy.ts"
 import { speechConfigured, transcribe } from "./lib/speech.ts"
-import { cachedVoice, clipPath, speakClip, synthesizeVoice } from "./lib/voice.ts"
+import { cachedVoice, clipAudio, speakClip, synthesizeVoice } from "./lib/voice.ts"
 import {
   chatWithTree,
   claimTree,
   greetTree,
-  stateFor,
   logWatering,
   messages,
   recordReading,
@@ -268,7 +266,7 @@ export function createApp() {
   app.post("/trees/:id/talk/greet", zValidator("json", z.object({ userId: z.string() })), async (c) => {
     const greeting = await greetTree({ treeId: c.req.param("id"), userId: c.req.valid("json").userId })
     if (!greeting) return c.json({ error: "not found" }, 404)
-    const clip = await speakClip(greeting.reply, greeting.language)
+    const clip = speakClip(greeting.reply, greeting.language)
     return c.json({
       reply: greeting.reply,
       state: greeting.state,
@@ -293,33 +291,25 @@ export function createApp() {
       }
     }
     if (!transcript) return c.json({ error: "didn't catch that" }, 422)
-    const user = await users().findOne({ _id: userId })
-    const result = await chatWithTree({
-      treeId: c.req.param("id"),
-      userId,
-      message: transcript,
-      channel: "app",
-      mode: "voice",
-    })
+    const [user, result] = await Promise.all([
+      users().findOne({ _id: userId }),
+      chatWithTree({ treeId: c.req.param("id"), userId, message: transcript, channel: "app", mode: "voice" }),
+    ])
     if (!result || !user) return c.json({ error: "not found" }, 404)
-    const clip = await speakClip(result.reply, user.language)
+    const clip = speakClip(result.reply, user.language)
     return c.json({
       transcript,
       reply: result.reply,
       actions: result.actions,
-      state: await stateFor(c.req.param("id")),
+      state: result.state,
       audioUrl: clip ? `/voice/clips/${clip}` : null,
     })
   })
 
   app.get("/voice/clips/:id", async (c) => {
-    const file = clipPath(c.req.param("id"))
-    if (!file) return c.json({ error: "bad clip id" }, 400)
-    try {
-      return c.body(new Uint8Array(await readFile(file)), 200, { "Content-Type": "audio/mpeg" })
-    } catch {
-      return c.json({ error: "clip not found" }, 404)
-    }
+    const audio = await clipAudio(c.req.param("id"))
+    if (!audio) return c.json({ error: "clip not found" }, 404)
+    return c.body(new Uint8Array(audio), 200, { "Content-Type": "audio/mpeg" })
   })
 
   app.get("/trees/:id/voice", async (c) => {

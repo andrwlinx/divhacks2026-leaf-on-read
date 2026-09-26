@@ -7,7 +7,7 @@ export const cooldownMs = demoMode ? 30_000 : 6 * 60 * 60 * 1000
 export const claimMs = demoMode ? 2 * 60 * 1000 : 2 * 60 * 60 * 1000
 export const wateringGraceMs = demoMode ? 30_000 : 0
 
-export const xaiModel = process.env.XAI_MODEL || "grok-4.7"
+export const xaiModel = process.env.XAI_MODEL || "grok-4.20-0309-non-reasoning"
 export const publicApiUrl = (process.env.PUBLIC_API_URL || "").replace(/\/$/, "")
 
 export const GUS_ID = "gus"

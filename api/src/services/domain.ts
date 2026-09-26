@@ -148,7 +148,6 @@ export async function logWatering(input: {
 }) {
   const tree = await treeById(input.treeId)
   if (!tree) return null
-  const verified = input.photoBase64 ? await verifyWateringPhoto(input.photoBase64) : null
   const at = new Date().toISOString()
   const watering: WateringDoc = {
     _id: randomUUID(),
@@ -156,11 +155,17 @@ export async function logWatering(input: {
     userId: input.userId,
     gallons: input.gallons,
     photoUrl: null,
-    verified,
+    verified: null,
     source: input.source,
     at,
   }
   await waterings().insertOne(watering)
+  // Gemini can take several seconds under load, so the watering counts now and the verdict lands after.
+  if (input.photoBase64) {
+    void verifyWateringPhoto(input.photoBase64)
+      .then((verified) => waterings().updateOne({ _id: watering._id }, { $set: { verified } }))
+      .catch((error) => console.error("photo check failed", error))
+  }
   await trees().updateOne(
     { _id: input.treeId },
     { $set: { status: "ok", lastWateredAt: at, claim: null } },
@@ -223,18 +228,12 @@ const chatTools = [
   {
     type: "function",
     name: "log_watering",
-    description: "Log that this person just watered the tree.",
+    description: "Only when the person says they already watered you. Logs the watering.",
     parameters: {
       type: "object",
       properties: { gallons: { type: "number", description: "Gallons poured, usually 5 to 20." } },
       required: ["gallons"],
     },
-  },
-  {
-    type: "function",
-    name: "get_status",
-    description: "Read this tree's live moisture, temperature, and hours since it was watered.",
-    parameters: { type: "object", properties: {} },
   },
   {
     type: "function",
@@ -249,7 +248,7 @@ const chatTools = [
   {
     type: "function",
     name: "claim",
-    description: "This person is on their way to water the tree.",
+    description: "Only when the person says they're on their way to water you.",
     parameters: { type: "object", properties: {} },
   },
 ]
@@ -261,21 +260,19 @@ export async function chatWithTree(input: {
   channel: "app" | "imessage"
   mode?: "text" | "voice"
 }) {
-  const tree = await treeById(input.treeId)
-  const user = await users().findOne({ _id: input.userId })
+  const [tree, user] = await Promise.all([treeById(input.treeId), users().findOne({ _id: input.userId })])
   if (!tree || !user) return null
-  const facts = await treeFacts(tree)
-  const history = await messages()
-    .find({ treeId: tree._id, userId: user._id })
-    .sort({ at: -1 })
-    .limit(20)
-    .toArray()
+  const [facts, history] = await Promise.all([
+    treeFacts(tree),
+    messages().find({ treeId: tree._id, userId: user._id }).sort({ at: -1 }).limit(20).toArray(),
+  ])
   history.reverse()
   const state = treeState(tree, facts)
   const recent = history.filter((item) => item.role === "tree").map((item) => item.text).slice(-8)
   const local = () => localReply(tree, user, input.message, facts.moisture, input.channel, state.feeling, recent)
 
-  await messages().insertOne({
+  // Saved while Grok thinks; awaited before the reply is stored so order is kept.
+  const savedTurn = messages().insertOne({
     _id: randomUUID(),
     treeId: tree._id,
     userId: user._id,
@@ -304,6 +301,7 @@ export async function chatWithTree(input: {
     }
   }
 
+  await savedTurn
   await messages().insertOne({
     _id: randomUUID(),
     treeId: tree._id,
@@ -314,7 +312,9 @@ export async function chatWithTree(input: {
     actions,
     at: new Date().toISOString(),
   })
-  return { reply, actions }
+  // Tools can change the tree (watered, claimed); otherwise the state we already read is current.
+  const after = actions.length ? await treeById(tree._id) : tree
+  return { reply, actions, state: after ? treeState(after, actions.length ? await treeFacts(after) : facts) : state }
 }
 
 async function grokChat(
@@ -431,7 +431,7 @@ async function localReply(
 const voiceRules = [
   "Your reply is read aloud by a text-to-speech voice: no emoji, no markdown, no lists, and write numbers the way you'd say them.",
   "Sound like your personality, and let how you physically feel right now (from the live facts) color what you say.",
-  "If they ask how you are, or you haven't mentioned it yet, tell them your state plainly: thirsty or fine, and your soil moisture.",
+  "Tell them your state (thirsty or fine, and your soil moisture) when they ask or when you're thirsty. If you already said it in this conversation, don't repeat the number.",
 ]
 
 export function treeState(tree: TreeDoc, facts: Awaited<ReturnType<typeof treeFacts>>) {
@@ -456,8 +456,7 @@ export function treeState(tree: TreeDoc, facts: Awaited<ReturnType<typeof treeFa
 
 // The tree speaks first when a voice conversation opens: who it is and how it's doing.
 export async function greetTree(input: { treeId: string; userId: string }) {
-  const tree = await treeById(input.treeId)
-  const user = await users().findOne({ _id: input.userId })
+  const [tree, user] = await Promise.all([treeById(input.treeId), users().findOne({ _id: input.userId })])
   if (!tree || !user) return null
   const facts = await treeFacts(tree)
   const state = treeState(tree, facts)
@@ -498,12 +497,6 @@ export async function greetTree(input: { treeId: string; userId: string }) {
     at: new Date().toISOString(),
   })
   return { reply, state, language: user.language }
-}
-
-export async function stateFor(treeId: string) {
-  const tree = await treeById(treeId)
-  if (!tree) return null
-  return treeState(tree, await treeFacts(tree))
 }
 
 function fallbackLine(tree: TreeDoc, moisture: number | null) {

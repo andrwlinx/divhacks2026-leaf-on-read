@@ -30,7 +30,8 @@ export async function grokRespond(input: unknown[], tools?: unknown[]): Promise<
     },
     body: JSON.stringify({
       model: xaiModel,
-      reasoning: { effort: "low" },
+      // Non-reasoning models answer in about a second; reasoning ones reject this field.
+      ...(xaiModel.includes("non-reasoning") ? {} : { reasoning: { effort: "low" } }),
       input,
       ...(tools ? { tools } : {}),
     }),

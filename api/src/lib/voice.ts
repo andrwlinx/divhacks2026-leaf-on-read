@@ -54,27 +54,55 @@ export function clipPath(id: string) {
   return path.join(cacheDir, `talk-${id}.mp3`)
 }
 
-// One-off spoken reply for voice conversations. Returns a clip id, or null when TTS is unavailable.
-export async function speakClip(text: string, language: string) {
-  const model = voiceModel(language)
-  const apiKey = process.env.ELEVENLABS_API_KEY
-  const voiceId = process.env.ELEVENLABS_VOICE_ID
-  const spoken = text.replace(/\p{Extended_Pictographic}/gu, "").trim()
-  if (!model || !apiKey || !voiceId || !spoken) return null
+// Conversation voice: Flash is ~0.4s vs ~1.5s for multilingual v2, and covers all our languages but Bengali.
+function talkModel(language: string) {
+  if (language === "ht") return null
+  if (language === "bn") return "eleven_v3"
+  return "eleven_flash_v2_5"
+}
+
+const pending = new Map<string, Promise<Buffer | null>>()
+
+async function synthesizeClip(id: string, text: string, model: string) {
   try {
-    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${process.env.ELEVENLABS_VOICE_ID}`, {
       method: "POST",
-      headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ text: spoken, model_id: model }),
+      headers: { "xi-api-key": process.env.ELEVENLABS_API_KEY ?? "", "Content-Type": "application/json" },
+      body: JSON.stringify({ text, model_id: model }),
       signal: AbortSignal.timeout(10_000),
     })
     if (!response.ok) return null
-    const id = randomUUID()
+    const audio = Buffer.from(await response.arrayBuffer())
     await mkdir(cacheDir, { recursive: true })
-    await writeFile(path.join(cacheDir, `talk-${id}.mp3`), Buffer.from(await response.arrayBuffer()))
-    return id
+    await writeFile(path.join(cacheDir, `talk-${id}.mp3`), audio)
+    return audio
   } catch (error) {
     console.error("tts failed", error)
+    return null
+  } finally {
+    setTimeout(() => pending.delete(id), 60_000)
+  }
+}
+
+// Returns a clip id right away and synthesizes in the background, so the reply text isn't held up by TTS.
+export function speakClip(text: string, language: string) {
+  const model = talkModel(language)
+  const spoken = text.replace(/\p{Extended_Pictographic}/gu, "").trim()
+  if (!model || !process.env.ELEVENLABS_API_KEY || !process.env.ELEVENLABS_VOICE_ID || !spoken) return null
+  const id = randomUUID()
+  pending.set(id, synthesizeClip(id, spoken, model))
+  return id
+}
+
+// Waits for an in-flight clip, else reads a finished one from disk.
+export async function clipAudio(id: string) {
+  const file = clipPath(id)
+  if (!file) return null
+  const inFlight = pending.get(id)
+  if (inFlight) return inFlight
+  try {
+    return await readFile(file)
+  } catch {
     return null
   }
 }
