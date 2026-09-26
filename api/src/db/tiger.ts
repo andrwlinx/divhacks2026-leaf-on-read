@@ -31,6 +31,17 @@ const statements = [
      schedule_interval => INTERVAL '1 hour',
      if_not_exists => TRUE
    )`,
+  // One compressed segment per tree. Chunks newer than a day stay writable for the live demo.
+  `ALTER TABLE readings SET (
+     timescaledb.compress,
+     timescaledb.compress_segmentby = 'tree_id',
+     timescaledb.compress_orderby = 'time DESC'
+   )`,
+  `SELECT add_compression_policy(
+     'readings',
+     compress_after => INTERVAL '1 day',
+     if_not_exists => TRUE
+   )`,
 ]
 
 export async function migrateTiger() {
