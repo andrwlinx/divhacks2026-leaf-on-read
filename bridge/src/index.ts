@@ -59,7 +59,7 @@ async function handle(line: string) {
     const telemetry = record as Telemetry
     if (telemetry.powered_on === false || typeof telemetry.moisture_avg !== "number") return
     const ok = await post("/readings", {
-      sensorId,
+      sensorId: telemetry.device_id || sensorId,
       moisture: Math.max(0, Math.min(100, telemetry.moisture_avg)),
       temp: telemetry.temperature_c ?? null,
       light: null,
@@ -73,7 +73,7 @@ async function handle(line: string) {
   } else if (record.record_type === "event") {
     const event = (record as DeviceEvent).event
     console.log(`event: ${event}`)
-    await post(`/sensors/${sensorId}/events`, { event })
+    await post(`/sensors/${(record as DeviceEvent).device_id || sensorId}/events`, { event })
   }
 }
 

@@ -13,4 +13,11 @@ export const publicApiUrl = (process.env.PUBLIC_API_URL || "").replace(/\/$/, ""
 
 export const GUS_ID = "gus"
 export const GUS_SENSOR = "gus-demo"
+// The id the Arduino firmware prints on every telemetry line.
+export const GUS_DEVICE = "gus-001"
 export const GUS_BLOCK = "morningside"
+
+export function canonicalSensorId(sensorId: string) {
+  if (sensorId === GUS_DEVICE || sensorId === GUS_ID || sensorId === GUS_SENSOR) return GUS_SENSOR
+  return sensorId
+}

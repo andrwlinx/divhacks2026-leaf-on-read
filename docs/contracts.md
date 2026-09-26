@@ -12,6 +12,8 @@ Base URL is the API (`EXPO_PUBLIC_API_URL` / DigitalOcean). All bodies are JSON.
 
 `moisture` is a 0–100 percent after the sensor's dry/wet calibration. `201` on success.
 
+The Arduino's own line is accepted too: `device_id` `gus-001` and `moisture_avg` map onto Gus (`sensorId` `gus-demo`).
+
 ## API → agent
 
 `POST {AGENT_URL}/events`

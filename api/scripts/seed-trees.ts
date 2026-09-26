@@ -117,7 +117,10 @@ const gus = blankTree({
   status: "ok",
 })
 await trees.updateOne({ _id: GUS_ID }, { $setOnInsert: gus }, { upsert: true })
-await trees.updateOne({ _id: GUS_ID }, { $set: { persona: GUS_PERSONA, backstory: GUS_BACKSTORY } })
+await trees.updateOne(
+  { _id: GUS_ID },
+  { $set: { persona: GUS_PERSONA, backstory: GUS_BACKSTORY, sensorId: GUS_SENSOR } },
+)
 await trees.updateOne(
   { _id: GUS_ID },
   { $addToSet: { adopterIds: { $each: ["neighbor-maya", "neighbor-luis"] } } },

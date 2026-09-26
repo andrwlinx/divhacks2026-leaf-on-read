@@ -5,7 +5,7 @@ import { z } from "zod"
 import { collection, database } from "./db/mongo.ts"
 import { pool, hourlyBuckets, latestReading, minuteBuckets, readingsSince } from "./db/tiger.ts"
 import { demoState } from "./demoState.ts"
-import { demoMode, GUS_BLOCK, GUS_ID, GUS_SENSOR, publicApiUrl } from "./env.ts"
+import { canonicalSensorId, demoMode, GUS_BLOCK, GUS_ID, GUS_SENSOR, publicApiUrl } from "./env.ts"
 import { alertText } from "./copy.ts"
 import { speechConfigured, transcribe } from "./lib/speech.ts"
 import { cachedVoice, clipAudio, speakClip, synthesizeVoice } from "./lib/voice.ts"
@@ -36,14 +36,28 @@ import type { AlertDoc, BlockDoc, TreeDoc, UserDoc, WateringDoc } from "./types.
 
 const blocks = () => collection<BlockDoc>("blocks")
 
-const readingBody = z.object({
+const readingBody = z.preprocess((input) => {
+  if (!input || typeof input !== "object") return input
+  const row = input as Record<string, unknown>
+  // The Arduino prints device_id "gus-001" and moisture_avg; that line is Gus.
+  if (typeof row.device_id === "string" && typeof row.moisture_avg === "number") {
+    return {
+      sensorId: row.device_id,
+      moisture: row.moisture_avg,
+      temp: typeof row.temperature_c === "number" ? row.temperature_c : null,
+      light: null,
+      ts: typeof row.ts === "string" ? row.ts : undefined,
+    }
+  }
+  return input
+}, z.object({
   sensorId: z.string().min(1),
-  moisture: z.number().min(0).max(100),
+  moisture: z.number().transform((value) => Math.max(0, Math.min(100, value))),
   // The Arduino kit has no temperature or light sensor wired yet, so these may be null.
   temp: z.number().nullable().optional(),
   light: z.number().nullable().optional(),
   ts: z.string().min(1).optional(),
-})
+}))
 
 export function createApp() {
   const app = new Hono()
@@ -76,9 +90,10 @@ export function createApp() {
     const body = c.req.valid("json")
     const time = body.ts ? new Date(body.ts) : new Date()
     if (Number.isNaN(time.getTime())) return c.json({ error: "bad ts" }, 400)
-    if (body.sensorId === GUS_SENSOR) demoState.markHardwareReading()
+    const sensorId = canonicalSensorId(body.sensorId)
+    if (sensorId === GUS_SENSOR) demoState.markHardwareReading()
     const tree = await recordReading({
-      sensorId: body.sensorId,
+      sensorId,
       moisture: body.moisture,
       temp: body.temp ?? null,
       light: body.light ?? null,
@@ -312,7 +327,7 @@ export function createApp() {
 
   // Events the Arduino reports (petting Gus's touch sensor, a watering it felt): the tree tells its crew.
   app.post("/sensors/:sensorId/events", zValidator("json", z.object({ event: z.string().min(1).max(60) })), async (c) => {
-    const tree = await trees().findOne({ sensorId: c.req.param("sensorId") })
+    const tree = await trees().findOne({ sensorId: canonicalSensorId(c.req.param("sensorId")) })
     if (!tree) return c.json({ error: "unknown sensor" }, 404)
     const { event } = c.req.valid("json")
     const lines: Record<string, string> = {
