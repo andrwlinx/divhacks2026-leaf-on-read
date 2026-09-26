@@ -83,7 +83,7 @@ export default function Shop() {
                 return (
                   <View key={sticker.id} style={styles.card}>
                     <View style={styles.art}>
-                      <Image source={{ uri: sticker.imageUrl }} style={styles.image} contentFit="cover" transition={150} />
+                      <Image source={{ uri: sticker.imageUrl }} style={styles.image} contentFit="contain" transition={150} />
                     </View>
                     <Text style={styles.name} numberOfLines={1}>{sticker.name}</Text>
                     {owned ? (
@@ -140,16 +140,11 @@ const styles = StyleSheet.create({
     ...shadow,
   },
   art: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    borderWidth: 3,
-    borderColor: "#fff",
-    overflow: "hidden",
-    backgroundColor: "#fff",
+    width: 88,
+    height: 88,
     shadowColor: colors.ink,
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
+    shadowOpacity: 0.18,
+    shadowRadius: 3,
     shadowOffset: { width: 0, height: 2 },
   },
   image: { width: "100%", height: "100%" },

@@ -1,4 +1,5 @@
 import { publicApiUrl } from "../env.ts"
+import { stickerImageUrl } from "../services/stickers.ts"
 import type { TreeDoc } from "../types.ts"
 
 // Pushes live changes to the DeepSpace Block Board (web/src/server/leaf-sync.ts).
@@ -78,7 +79,7 @@ export function pushTree(tree: TreeDoc, moisture?: number | null, force = false)
     ...(publicApiUrl
       ? {
           stickers: Object.entries(tree.stickers ?? {}).flatMap(([slot, placed]) =>
-            placed ? [{ slot, stickerId: placed.stickerId, imageUrl: `${publicApiUrl}/stickers/${placed.stickerId}/image` }] : [],
+            placed ? [{ slot, stickerId: placed.stickerId, imageUrl: stickerImageUrl(placed.stickerId) }] : [],
           ),
         }
       : {}),

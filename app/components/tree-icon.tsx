@@ -12,7 +12,7 @@ const anchors: Record<StickerSlot, { top: number; left: number }> = {
   ground: { top: 0.7, left: -0.06 },
 }
 
-/** A tree's icon (portrait or mascot face) with the stickers its caretakers placed, as round die-cut badges. */
+/** A tree's icon (portrait or mascot face) with the die-cut stickers its caretakers placed. */
 export function TreeIcon({
   url,
   mood,
@@ -28,7 +28,7 @@ export function TreeIcon({
 }) {
   // Tiny icons (map pins) stay clean; stickers would just be specks.
   const shown = size >= 34 ? (stickers ?? []) : []
-  const sticker = Math.round(size * 0.34)
+  const sticker = Math.round(size * 0.4)
   return (
     <View style={{ width: size, height: size * (url ? 1 : 1.1) }}>
       <TreePortrait url={url} mood={mood} size={size} badge={badge && shown.length === 0} />
@@ -38,17 +38,10 @@ export function TreeIcon({
           pointerEvents="none"
           style={[
             styles.badge,
-            {
-              width: sticker,
-              height: sticker,
-              borderRadius: sticker / 2,
-              top: anchors[item.slot].top * size,
-              left: anchors[item.slot].left * size,
-              borderWidth: Math.max(1.5, sticker * 0.06),
-            },
+            { width: sticker, height: sticker, top: anchors[item.slot].top * size, left: anchors[item.slot].left * size },
           ]}
         >
-          <Image source={{ uri: item.imageUrl }} style={styles.art} contentFit="cover" cachePolicy="memory-disk" />
+          <Image source={{ uri: item.imageUrl }} style={styles.art} contentFit="contain" cachePolicy="memory-disk" />
         </View>
       ))}
     </View>
@@ -56,15 +49,13 @@ export function TreeIcon({
 }
 
 const styles = StyleSheet.create({
+  // Transparent PNGs with their own white die-cut edge; the shadow follows the sticker's shape.
   badge: {
     position: "absolute",
-    backgroundColor: "#fff",
-    borderColor: "#fff",
-    overflow: "hidden",
     shadowColor: "#1F3A2B",
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
   },
   art: { width: "100%", height: "100%" },
 })

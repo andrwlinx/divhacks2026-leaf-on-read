@@ -103,7 +103,7 @@ export function BlockMap({
 }
 
 // Sticker badge spots around a 52px pin bubble (they sit outside its clipped circle).
-const pinAnchors = { head: { top: -9, left: 17 }, face: { top: 18, left: 17 }, side: { top: 4, left: 40 }, ground: { top: 36, left: -6 } }
+const pinAnchors = { head: { top: -12, left: 15 }, face: { top: 16, left: 15 }, side: { top: 2, left: 38 }, ground: { top: 34, left: -8 } }
 
 function TreePointer({
   name,
@@ -146,7 +146,7 @@ function TreePointer({
         {star
           ? (stickers ?? []).map((sticker) => (
               <View key={sticker.slot} style={[styles.sticker, pinAnchors[sticker.slot]]}>
-                <Image source={{ uri: sticker.imageUrl }} style={styles.stickerArt} contentFit="cover" cachePolicy="memory-disk" />
+                <Image source={{ uri: sticker.imageUrl }} style={styles.stickerArt} contentFit="contain" cachePolicy="memory-disk" />
               </View>
             ))
           : null}
@@ -166,13 +166,12 @@ const styles = StyleSheet.create({
   bubbleSmall: { width: 30, height: 30, borderRadius: 15, borderWidth: 2 },
   sticker: {
     position: "absolute",
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 1.5,
-    borderColor: "#fff",
-    backgroundColor: "#fff",
-    overflow: "hidden",
+    width: 22,
+    height: 22,
+    shadowColor: "#1F3A2B",
+    shadowOpacity: 0.25,
+    shadowRadius: 1.5,
+    shadowOffset: { width: 0, height: 1 },
   },
   stickerArt: { width: "100%", height: "100%" },
   tail: {

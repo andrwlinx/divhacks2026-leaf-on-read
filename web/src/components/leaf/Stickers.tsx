@@ -8,9 +8,9 @@ export const stickerAnchors: Record<TreeSticker['slot'], { top: number; left: nu
   ground: { top: 0.7, left: -0.06 },
 }
 
-/** Round die-cut sticker badges laid over a tree icon of `size` px (the parent must be position: relative). */
+/** Die-cut (transparent) stickers laid over a tree icon of `size` px (the parent must be position: relative). */
 export function StickerBadges({ stickers, size }: { stickers?: TreeSticker[] | null; size: number }) {
-  const badge = Math.round(size * 0.34)
+  const badge = Math.round(size * 0.4)
   return (
     <>
       {(stickers ?? []).map((sticker) => (
@@ -18,7 +18,7 @@ export function StickerBadges({ stickers, size }: { stickers?: TreeSticker[] | n
           key={sticker.slot}
           src={sticker.imageUrl}
           alt=""
-          className="pointer-events-none absolute rounded-full border-2 border-white bg-white object-cover shadow"
+          className="pointer-events-none absolute object-contain drop-shadow"
           style={{
             width: badge,
             height: badge,
@@ -33,11 +33,11 @@ export function StickerBadges({ stickers, size }: { stickers?: TreeSticker[] | n
 
 /** The same badges as HTML for Leaflet divIcons. */
 export function stickerBadgesHtml(stickers: TreeSticker[] | null | undefined, size: number) {
-  const badge = Math.round(size * 0.34)
+  const badge = Math.round(size * 0.4)
   return (stickers ?? [])
     .map(
       (sticker) =>
-        `<img src="${sticker.imageUrl}" alt="" style="position:absolute;width:${badge}px;height:${badge}px;top:${stickerAnchors[sticker.slot].top * size}px;left:${stickerAnchors[sticker.slot].left * size}px;border-radius:999px;border:2px solid #fff;background:#fff;object-fit:cover;box-shadow:0 1px 3px rgba(31,58,43,.25)" />`,
+        `<img src="${sticker.imageUrl}" alt="" style="position:absolute;width:${badge}px;height:${badge}px;top:${stickerAnchors[sticker.slot].top * size}px;left:${stickerAnchors[sticker.slot].left * size}px;object-fit:contain;filter:drop-shadow(0 1px 1.5px rgba(31,58,43,.3))" />`,
     )
     .join('')
 }

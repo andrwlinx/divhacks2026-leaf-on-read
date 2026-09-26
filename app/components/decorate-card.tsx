@@ -77,7 +77,7 @@ export function DecorateCard({
               style={[styles.slot, open === slot && styles.slotOpen]}
             >
               {current ? (
-                <Image source={{ uri: current.imageUrl }} style={styles.slotArt} contentFit="cover" />
+                <Image source={{ uri: current.imageUrl }} style={styles.slotArt} contentFit="contain" />
               ) : (
                 <Icon name="plus" color={colors.muted} size={18} />
               )}
@@ -93,7 +93,7 @@ export function DecorateCard({
             <View style={styles.options}>
               {owned.map((sticker) => (
                 <Pressable key={sticker.id} style={styles.option} onPress={() => void place(open, sticker.id)}>
-                  <Image source={{ uri: sticker.imageUrl }} style={styles.optionArt} contentFit="cover" />
+                  <Image source={{ uri: sticker.imageUrl }} style={styles.optionArt} contentFit="contain" />
                   <Text style={styles.optionName} numberOfLines={1}>{sticker.name}</Text>
                 </Pressable>
               ))}
@@ -139,12 +139,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg,
   },
   slotOpen: { borderColor: colors.leaf, borderStyle: "solid", backgroundColor: colors.mint },
-  slotArt: { width: 40, height: 40, borderRadius: 20 },
+  slotArt: { width: 44, height: 44 },
   slotLabel: { fontSize: 11, fontWeight: "700", color: colors.inkSoft },
   picker: { gap: 10 },
   options: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   option: { alignItems: "center", gap: 4, width: 72 },
-  optionArt: { width: 56, height: 56, borderRadius: 28, borderWidth: 2, borderColor: "#fff" },
+  optionArt: { width: 60, height: 60 },
   optionName: { fontSize: 11, color: colors.inkSoft },
   empty: { color: colors.inkSoft },
   pickerActions: { flexDirection: "row", justifyContent: "space-between" },

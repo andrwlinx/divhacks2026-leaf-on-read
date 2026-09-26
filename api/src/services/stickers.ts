@@ -33,7 +33,9 @@ export function stickerPrompt(sticker: Sticker) {
   return `Cute kawaii sticker of ${sticker.subject}, thick soft white outline, flat pastel colors, simple and bold so it reads when small, plain white background, centered, no text, no words, no letters.`
 }
 
-export const stickerImageUrl = (id: string) => `${publicApiUrl}/stickers/${id}/image`
+// Bump when the art changes so phones and browsers drop their cached copies.
+const ART_VERSION = "cutout-1"
+export const stickerImageUrl = (id: string) => `${publicApiUrl}/stickers/${id}/image?v=${ART_VERSION}`
 
 type StickerArtDoc = { _id: string; image: Binary; mimeType: string; createdAt: string }
 export const stickerArt = () => collection<StickerArtDoc>("sticker_art")

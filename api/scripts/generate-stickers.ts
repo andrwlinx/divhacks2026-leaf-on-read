@@ -1,5 +1,6 @@
-// One-off: draw every sticker in the catalog with Grok Imagine and store 256px JPEGs in Mongo.
-// Skips stickers already drawn. Uses macOS `sips` to shrink them. Run: npx tsx scripts/generate-stickers.ts
+// One-off: draw every sticker in the catalog with Grok Imagine and store transparent 256px PNGs in Mongo.
+// Imagine returns flat JPEGs on white, so scripts/cutout_sticker.py (Pillow) removes the background and adds a
+// die-cut outline. Skips stickers already drawn. Run: npx tsx scripts/generate-stickers.ts
 import "dotenv/config"
 import { execFileSync } from "node:child_process"
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
@@ -19,13 +20,13 @@ console.log(`${todo.length} to draw, ${existing.size} already done`)
 async function draw(sticker: Sticker) {
   const { image } = await drawImage(stickerPrompt(sticker))
   const raw = path.join(dir, `${sticker.id}.raw`)
-  const small = path.join(dir, `${sticker.id}.jpg`)
+  const cut = path.join(dir, `${sticker.id}.png`)
   writeFileSync(raw, image)
-  execFileSync("sips", ["-Z", "256", "-s", "format", "jpeg", "-s", "formatOptions", "85", raw, "--out", small], { stdio: "ignore" })
-  const bytes = readFileSync(small)
+  execFileSync("python3", [path.join(import.meta.dirname, "cutout_sticker.py"), raw, cut], { stdio: "inherit" })
+  const bytes = readFileSync(cut)
   await stickerArt().updateOne(
     { _id: sticker.id },
-    { $set: { image: new Binary(bytes), mimeType: "image/jpeg", createdAt: new Date().toISOString() } },
+    { $set: { image: new Binary(bytes), mimeType: "image/png", createdAt: new Date().toISOString() } },
     { upsert: true },
   )
   console.log(`  ${sticker.id}: ${bytes.length} bytes`)
