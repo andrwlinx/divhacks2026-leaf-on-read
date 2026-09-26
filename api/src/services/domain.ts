@@ -416,7 +416,7 @@ async function grokChat(
     if (turn.calls.length === 0) return turn.text
     const outputs = []
     for (const call of turn.calls) {
-      const result = await runTool(tree._id, user._id, call.name, call.arguments, channel)
+      const result = await runTool(tree._id, user._id, call.name, call.arguments, channel, message)
       actions.push({ name: call.name, result })
       outputs.push({
         type: "function_call_output",
@@ -429,22 +429,49 @@ async function grokChat(
   return ""
 }
 
+// The watering tool is only honored when the neighbor's own message says they watered; the model can misfire
+// on "are you thirsty?" right after "I'm feeding you", and a fake watering would thank them and clear the alert.
+const SAYS_WATERED = /\b(water(ed|ing)?|poured?|pouring|soak(ed)?|bucket|gallons?|gave you (a )?(drink|water)|feeding you|fed you|hose)\b/i
+
 async function runTool(
   treeId: string,
   userId: string,
   name: string,
   raw: string,
   source: "app" | "imessage",
+  message: string,
 ) {
   const args = JSON.parse(raw || "{}") as { gallons?: number; name?: string }
   if (name === "log_watering") {
+    if (!SAYS_WATERED.test(message) || /\?\s*$/.test(message.trim())) {
+      return {
+        logged: false,
+        reason: "They did not say they watered you in this message. Do not thank them for watering or claim new moisture.",
+      }
+    }
+    const recent = await waterings().findOne({
+      treeId,
+      userId,
+      source,
+      at: { $gte: new Date(Date.now() - 10 * 60_000).toISOString() },
+    })
+    if (recent) {
+      return { logged: false, reason: "Their watering from a few minutes ago is already logged. Don't log or thank it twice." }
+    }
     const watering = await logWatering({
       treeId,
       userId,
       gallons: Number(args.gallons) || 5,
       source,
     })
-    return { logged: Boolean(watering), gallons: watering?.gallons ?? 0 }
+    const reading = await latestReading(treeId)
+    return {
+      logged: Boolean(watering),
+      gallons: watering?.gallons ?? 0,
+      // Don't let the model make up a new percentage: water takes a while to reach the sensor.
+      sensorNow: reading ? Math.round(reading.moisture) : null,
+      note: "Thank them. Only quote sensorNow for your moisture; the water may take a few minutes to soak in.",
+    }
   }
   if (name === "get_status") {
     const tree = await treeById(treeId)
