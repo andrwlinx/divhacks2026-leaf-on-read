@@ -14,6 +14,9 @@ type BoardTree = {
   moisture?: number | null
   hasSensor: boolean
   claimedBy: string | null
+  adopters: number
+  lastWateredAt: string | null
+  threshold: number
 }
 
 const lastPush = new Map<string, { status: string; moisture: number | null; at: number }>()
@@ -65,6 +68,9 @@ export function pushTree(tree: TreeDoc, moisture?: number | null, force = false)
     status: tree.status,
     hasSensor: Boolean(tree.sensorId),
     claimedBy: claimed,
+    adopters: tree.adopterIds.length,
+    lastWateredAt: tree.lastWateredAt,
+    threshold: tree.thirstThreshold,
     ...(moisture === undefined ? {} : { moisture: moisture === null ? null : Math.round(moisture * 10) / 10 }),
   }
   send({ trees: [row] })

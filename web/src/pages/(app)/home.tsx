@@ -8,6 +8,7 @@
  */
 
 import { useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { AuthOverlay, useAuth, useMutations, usePresenceRoom, useQuery, useUser } from 'deepspace'
 import { Droplets, Eye, Hand, Send, Trophy } from 'lucide-react'
 import { BlockMap, type MapTree } from '../../components/leaf/BlockMap'
@@ -48,7 +49,9 @@ export default function BlockBoard() {
   const { records: treeRecords, status } = useQuery<Tree>('trees')
   const { records: neighborRecords } = useQuery<Neighbor>('neighbors')
   const { peers } = usePresenceRoom('board:morningside')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [params] = useSearchParams()
+  // Admin links deep-link a tree with ?tree=<id>.
+  const [selectedId, setSelectedId] = useState<string | null>(params.get('tree'))
 
   const trees = useMemo(() => treeRecords.map((record) => ({ recordId: record.recordId, ...record.data })), [treeRecords])
   const selected =

@@ -24,6 +24,9 @@ const treeRow = z.object({
   moisture: z.number().nullable().optional(),
   hasSensor: z.boolean().optional(),
   claimedBy: z.string().nullable().optional(),
+  adopters: z.number().int().nonnegative().optional(),
+  lastWateredAt: z.string().nullable().optional(),
+  threshold: z.number().optional(),
 })
 
 const neighborRow = z.object({
@@ -110,6 +113,9 @@ export async function pullFromLeaf(env: Env) {
       lng: number
       status: TreeRow['status']
       sensorId: string | null
+      adopters?: number
+      lastWateredAt?: string | null
+      threshold?: number
     }[]
     // The list endpoint has no moisture; keep whatever the last push recorded.
     await syncTrees(
@@ -123,6 +129,9 @@ export async function pullFromLeaf(env: Env) {
         lng: pin.lng,
         status: pin.status,
         hasSensor: Boolean(pin.sensorId),
+        adopters: pin.adopters,
+        lastWateredAt: pin.lastWateredAt ?? null,
+        threshold: pin.threshold,
       })),
     )
   }

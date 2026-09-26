@@ -379,6 +379,9 @@ function publicTree(tree: TreeDoc) {
     blockId: tree.blockId,
     sensorId: tree.sensorId,
     address: tree.address,
+    adopters: tree.adopterIds.length,
+    lastWateredAt: tree.lastWateredAt,
+    threshold: tree.thirstThreshold,
   }
 }
 
