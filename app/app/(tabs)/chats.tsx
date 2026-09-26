@@ -1,12 +1,17 @@
+import { Avatar } from "@/components/kit"
 import { TreeBuddy } from "@/components/tree-buddy"
 import { colors, rounded, statusMeta } from "@/constants/design"
 import { api } from "@/lib/api"
-import { unreadTreeIds } from "@/lib/chat-read"
+import { unreadThreadIds, unreadTreeIds } from "@/lib/chat-read"
 import { useSession } from "@/lib/session"
-import type { ChatSummary } from "@/lib/types"
+import type { ChatSummary, ThreadSummary } from "@/lib/types"
 import { useFocusEffect, useRouter } from "expo-router"
 import { useCallback, useState } from "react"
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native"
+import { Pressable, SectionList, StyleSheet, Text, View } from "react-native"
+
+type Row =
+  | { type: "thread"; key: string; thread: ThreadSummary }
+  | { type: "tree"; key: string; chat: ChatSummary }
 
 function when(iso: string) {
   const date = new Date(iso)
@@ -20,14 +25,20 @@ function when(iso: string) {
 export default function Chats() {
   const router = useRouter()
   const { user } = useSession()
+  const [threads, setThreads] = useState<ThreadSummary[] | null>(null)
   const [chats, setChats] = useState<ChatSummary[] | null>(null)
   const [unread, setUnread] = useState<Set<string>>(new Set())
 
   const load = useCallback(async () => {
     if (!user) return
-    const rows = await api<ChatSummary[]>(`/users/${user._id}/chats`)
-    setChats(rows)
-    setUnread(await unreadTreeIds(rows))
+    const [threadRows, chatRows] = await Promise.all([
+      api<ThreadSummary[]>(`/users/${user._id}/threads`),
+      api<ChatSummary[]>(`/users/${user._id}/chats`),
+    ])
+    const [threadUnread, treeUnread] = await Promise.all([unreadThreadIds(threadRows, user._id), unreadTreeIds(chatRows)])
+    setThreads(threadRows)
+    setChats(chatRows)
+    setUnread(new Set([...threadUnread, ...treeUnread]))
   }, [user])
 
   useFocusEffect(
@@ -38,40 +49,90 @@ export default function Chats() {
     }, [load]),
   )
 
+  const sections = [
+    {
+      title: "Neighbors",
+      data: (threads ?? []).map((thread): Row => ({ type: "thread", key: thread.id, thread })),
+    },
+    {
+      title: "Trees",
+      data: (chats ?? []).map((chat): Row => ({ type: "tree", key: `tree-${chat.treeId}`, chat })),
+    },
+  ].filter((section) => section.data.length > 0)
+
   return (
-    <FlatList
-      data={chats ?? []}
-      keyExtractor={(item) => item.treeId}
+    <SectionList
+      sections={sections}
+      keyExtractor={(item) => item.key}
       contentContainerStyle={styles.list}
+      stickySectionHeadersEnabled={false}
+      renderSectionHeader={({ section }) => <Text style={styles.section}>{section.title}</Text>}
       ItemSeparatorComponent={() => <View style={styles.separator} />}
       ListEmptyComponent={
-        chats ? (
+        threads && chats ? (
           <View style={styles.empty}>
             <TreeBuddy mood="happy" size={110} />
             <Text style={styles.emptyTitle}>No conversations yet</Text>
-            <Text style={styles.emptyText}>Open one of your trees and say hi. Texts from iMessage show up here too.</Text>
+            <Text style={styles.emptyText}>
+              Adopt a tree to join its crew chat, tap a neighbor on the Block tab to message them, or say hi to one of
+              your trees.
+            </Text>
           </View>
         ) : null
       }
       renderItem={({ item }) => {
-        const meta = statusMeta(item.status)
-        const isUnread = unread.has(item.treeId)
+        if (item.type === "thread") {
+          const { thread } = item
+          const isUnread = unread.has(thread.id)
+          const meta = thread.status ? statusMeta(thread.status) : null
+          const preview = thread.last
+            ? `${thread.last.senderId === user?._id ? "You" : thread.last.senderName}: ${thread.last.text}`
+            : `${thread.memberCount} caretaker${thread.memberCount === 1 ? "" : "s"} · say hi to the crew`
+          return (
+            <Pressable
+              style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.card }]}
+              onPress={() => router.push({ pathname: "/thread/[id]", params: { id: thread.id } })}
+            >
+              {thread.kind === "crew" && meta ? (
+                <View style={[styles.avatar, { backgroundColor: meta.soft }]}>
+                  <TreeBuddy mood={meta.mood} size={36} />
+                  <View style={styles.crewBadge}>
+                    <Text style={styles.crewBadgeText}>{thread.memberCount}</Text>
+                  </View>
+                </View>
+              ) : (
+                <Avatar name={thread.title} size={54} />
+              )}
+              <View style={styles.body}>
+                <View style={styles.top}>
+                  <Text style={[styles.name, isUnread && styles.bold]} numberOfLines={1}>{thread.title}</Text>
+                  {thread.last ? <Text style={styles.time}>{when(thread.last.at)}</Text> : null}
+                </View>
+                <Text style={[styles.preview, isUnread && styles.previewUnread]} numberOfLines={2}>{preview}</Text>
+              </View>
+              {isUnread ? <View style={styles.dot} /> : null}
+            </Pressable>
+          )
+        }
+        const { chat } = item
+        const meta = statusMeta(chat.status)
+        const isUnread = unread.has(chat.treeId)
         return (
           <Pressable
             style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.card }]}
-            onPress={() => router.push({ pathname: "/tree/[id]/chat", params: { id: item.treeId } })}
+            onPress={() => router.push({ pathname: "/tree/[id]/chat", params: { id: chat.treeId } })}
           >
             <View style={[styles.avatar, { backgroundColor: meta.soft }]}>
               <TreeBuddy mood={meta.mood} size={40} />
             </View>
             <View style={styles.body}>
               <View style={styles.top}>
-                <Text style={[styles.name, isUnread && styles.bold]} numberOfLines={1}>{item.treeName}</Text>
-                <Text style={styles.time}>{when(item.last.at)}</Text>
+                <Text style={[styles.name, isUnread && styles.bold]} numberOfLines={1}>{chat.treeName}</Text>
+                <Text style={styles.time}>{when(chat.last.at)}</Text>
               </View>
               <Text style={[styles.preview, isUnread && styles.previewUnread]} numberOfLines={2}>
-                {item.last.role === "user" ? "You: " : ""}
-                {item.last.text}
+                {chat.last.role === "user" ? "You: " : ""}
+                {chat.last.text}
               </Text>
             </View>
             {isUnread ? <View style={styles.dot} /> : null}
@@ -83,10 +144,36 @@ export default function Chats() {
 }
 
 const styles = StyleSheet.create({
-  list: { paddingVertical: 8, flexGrow: 1 },
+  list: { paddingBottom: 16, flexGrow: 1 },
+  section: {
+    fontFamily: rounded,
+    fontWeight: "800",
+    fontSize: 13,
+    color: colors.muted,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 4,
+  },
   separator: { height: 1, backgroundColor: colors.line, marginLeft: 82 },
   row: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 12 },
-  avatar: { width: 54, height: 54, borderRadius: 27, alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  avatar: { width: 54, height: 54, borderRadius: 27, alignItems: "center", justifyContent: "center", overflow: "visible" },
+  crewBadge: {
+    position: "absolute",
+    right: -2,
+    bottom: -2,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: colors.leafDeep,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: colors.bg,
+  },
+  crewBadgeText: { color: "#fff", fontSize: 10, fontWeight: "800" },
   body: { flex: 1, gap: 2 },
   top: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", gap: 8 },
   name: { flex: 1, fontFamily: rounded, fontSize: 17, fontWeight: "700", color: colors.ink },

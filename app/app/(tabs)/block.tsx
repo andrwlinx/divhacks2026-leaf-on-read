@@ -3,6 +3,7 @@ import { Avatar, Card, SectionTitle } from "@/components/kit"
 import { TreeBuddy } from "@/components/tree-buddy"
 import { colors, radius, rounded } from "@/constants/design"
 import { api } from "@/lib/api"
+import { messageNeighbor } from "@/lib/messaging"
 import { useSession } from "@/lib/session"
 import type { BlockActivity } from "@/lib/types"
 import * as Linking from "expo-linking"
@@ -86,11 +87,17 @@ export default function Block() {
       ) : null}
 
       <SectionTitle icon="trophy.fill" title="Leaderboard" color={colors.leafDeep} />
+      <Text style={styles.meta}>Tap a neighbor to send them a message.</Text>
       {rows.length === 0 && !error ? <Text style={styles.empty}>No waterings yet. The first bucket gets the crown 👑</Text> : null}
       {rows.map((row, index) => {
         const me = user?._id === row.userId
         return (
-          <Card key={row.userId} style={[styles.row, me && styles.rowMe]}>
+          <Pressable
+            key={row.userId}
+            disabled={me || !user}
+            onPress={() => user && void messageNeighbor(router, user._id, row.userId).catch(() => null)}
+          >
+          <Card style={[styles.row, me && styles.rowMe]}>
             <Text style={styles.rank}>{medals[index] ?? index + 1}</Text>
             <Avatar name={row.name} size={40} />
             <View style={styles.copy}>
@@ -107,7 +114,9 @@ export default function Block() {
               <Icon name="drop.fill" color={colors.water} size={13} />
               <Text style={styles.gallonsText}>{row.gallons}</Text>
             </View>
+            {!me ? <Icon name="bubble.left.fill" color={colors.muted} size={16} /> : null}
           </Card>
+          </Pressable>
         )
       })}
 

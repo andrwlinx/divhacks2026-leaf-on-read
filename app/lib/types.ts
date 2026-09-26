@@ -122,3 +122,25 @@ export type NearBlock = {
   thirsty: number
   neighbors: number
 }
+
+export type ThreadSummary = {
+  id: string
+  kind: "crew" | "dm"
+  title: string
+  treeId: string | null
+  status: TreeStatus | null
+  otherUserId: string | null
+  memberCount: number
+  last: { text: string; senderId: string | null; senderName: string; at: string } | null
+}
+
+export type NeighborMessage = { _id: string; threadId: string; senderId: string; senderName: string; text: string; at: string }
+
+export type ThreadDetail = {
+  id: string
+  kind: "crew" | "dm"
+  treeId: string | null
+  title: string
+  members: { id: string; name: string }[]
+  messages: NeighborMessage[]
+}

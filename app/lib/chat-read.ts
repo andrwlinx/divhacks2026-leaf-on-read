@@ -1,5 +1,5 @@
 import * as SecureStore from "expo-secure-store"
-import type { ChatSummary } from "@/lib/types"
+import type { ChatSummary, ThreadSummary } from "@/lib/types"
 
 // When each tree's chat was last opened, kept on the phone so the Chats tab can show unread dots.
 const KEY = "leaf-chat-read"
@@ -15,9 +15,10 @@ async function load() {
   return cache
 }
 
-export async function markChatRead(treeId: string) {
+// Keys are tree ids for tree chats and thread ids ("crew:gus", "dm:a:b") for neighbor conversations.
+export async function markChatRead(key: string) {
   const reads = await load()
-  reads[treeId] = new Date().toISOString()
+  reads[key] = new Date().toISOString()
   await SecureStore.setItemAsync(KEY, JSON.stringify(reads))
 }
 
@@ -25,6 +26,15 @@ export async function unreadTreeIds(chats: ChatSummary[]) {
   const reads = await load()
   return new Set(
     chats.filter((chat) => chat.last.role === "tree" && chat.last.at > (reads[chat.treeId] ?? "")).map((chat) => chat.treeId),
+  )
+}
+
+export async function unreadThreadIds(threads: ThreadSummary[], userId: string) {
+  const reads = await load()
+  return new Set(
+    threads
+      .filter((thread) => thread.last && thread.last.senderId !== userId && thread.last.at > (reads[thread.id] ?? ""))
+      .map((thread) => thread.id),
   )
 }
 

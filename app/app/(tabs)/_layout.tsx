@@ -1,9 +1,9 @@
 import { Icon } from "@/components/icon"
 import { colors, rounded } from "@/constants/design"
 import { api } from "@/lib/api"
-import { unreadTreeIds } from "@/lib/chat-read"
+import { unreadThreadIds, unreadTreeIds } from "@/lib/chat-read"
 import { useSession } from "@/lib/session"
-import type { ChatSummary, MyTree } from "@/lib/types"
+import type { ChatSummary, MyTree, ThreadSummary } from "@/lib/types"
 import * as Haptics from "expo-haptics"
 import { Tabs } from "expo-router"
 import type { SymbolViewProps } from "expo-symbols"
@@ -30,14 +30,15 @@ function useBadges() {
     let stopped = false
     const refresh = async () => {
       try {
-        const [trees, chats] = await Promise.all([
+        const [trees, chats, threads] = await Promise.all([
           api<MyTree[]>(`/users/${user._id}/trees`),
           api<ChatSummary[]>(`/users/${user._id}/chats`),
+          api<ThreadSummary[]>(`/users/${user._id}/threads`),
         ])
-        const unreadIds = await unreadTreeIds(chats)
+        const [treeUnread, threadUnread] = await Promise.all([unreadTreeIds(chats), unreadThreadIds(threads, user._id)])
         if (stopped) return
         setThirsty(trees.filter((tree) => tree.status === "thirsty").length)
-        setUnread(unreadIds.size)
+        setUnread(treeUnread.size + threadUnread.size)
       } catch {
         // Badges are a nicety; the tabs still work if a poll misses.
       }

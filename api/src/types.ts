@@ -79,3 +79,23 @@ export type BlockDoc = {
   name: string
   bbox: [number, number, number, number] | null
 }
+
+/** Neighbor-to-neighbor conversations: a tree's caretaker crew, or a 1:1 DM. */
+export type ThreadDoc = {
+  _id: string // "crew:<treeId>" or "dm:<userA>:<userB>" (ids sorted)
+  kind: "crew" | "dm"
+  treeId: string | null
+  memberIds: string[] // DMs only; a crew's members are always its tree's current adopters
+  lastText: string | null
+  lastSenderId: string | null
+  lastAt: string | null
+  createdAt: string
+}
+
+export type NeighborMessageDoc = {
+  _id: string
+  threadId: string
+  senderId: string
+  text: string
+  at: string
+}

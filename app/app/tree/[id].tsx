@@ -3,6 +3,7 @@ import { Avatar, Button, Card, Pill, SectionTitle } from "@/components/kit"
 import { TreeBuddy } from "@/components/tree-buddy"
 import { colors, radius, rounded, statusMeta } from "@/constants/design"
 import { api } from "@/lib/api"
+import { messageNeighbor, openCrew } from "@/lib/messaging"
 import { useSession } from "@/lib/session"
 import type { Reading, TreeDetail } from "@/lib/types"
 import * as Haptics from "expo-haptics"
@@ -309,16 +310,37 @@ export default function TreeScreen() {
       <Card>
         <SectionTitle icon="person.2.fill" title="Caretakers" color={colors.leafDeep} />
         {tree.caretakers.length ? (
-          <View style={styles.people}>
-            {tree.caretakers.map((person) => (
-              <View key={person.id} style={styles.person}>
-                <Avatar name={person.name} size={40} />
-                <Text style={styles.personName} numberOfLines={1}>
-                  {person.name}
-                </Text>
-              </View>
-            ))}
-          </View>
+          <>
+            <View style={styles.people}>
+              {tree.caretakers.map((person) => {
+                const me = person.id === user?._id
+                return (
+                  <Pressable
+                    key={person.id}
+                    style={styles.person}
+                    disabled={me || !user}
+                    onPress={() => user && void messageNeighbor(router, user._id, person.id).catch(() => null)}
+                  >
+                    <Avatar name={person.name} size={40} />
+                    <Text style={styles.personName} numberOfLines={1}>
+                      {me ? "You" : person.name}
+                    </Text>
+                  </Pressable>
+                )
+              })}
+            </View>
+            {adopted ? (
+              <Button
+                label={`Crew chat (${tree.caretakers.length})`}
+                icon="person.3.fill"
+                variant="soft"
+                color={colors.water}
+                onPress={() => openCrew(router, tree.id)}
+              />
+            ) : (
+              <Text style={styles.meta}>Tap a caretaker to message them.</Text>
+            )}
+          </>
         ) : (
           <Text style={styles.meta}>Nobody yet. Be the first! 🌱</Text>
         )}

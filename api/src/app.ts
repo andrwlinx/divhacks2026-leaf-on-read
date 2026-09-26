@@ -10,6 +10,7 @@ import { alertText } from "./copy.ts"
 import { speechConfigured, transcribe } from "./lib/speech.ts"
 import { cachedVoice, clipAudio, speakClip, synthesizeVoice } from "./lib/voice.ts"
 import { pushTree } from "./lib/deepspace.ts"
+import { listThreads, openDm, postToThread, readThread } from "./services/threads.ts"
 import {
   blockLeaderboard,
   chatWithTree,
@@ -261,6 +262,34 @@ export function createApp() {
     const user = await users().findOneAndUpdate({ _id: c.req.param("id") }, { $set: patch }, { returnDocument: "after" })
     if (!user) return c.json({ error: "not found" }, 404)
     return c.json(user)
+  })
+
+  // Neighbor messaging: tree crews and 1:1 DMs.
+  app.get("/users/:id/threads", async (c) => c.json(await listThreads(c.req.param("id"))))
+
+  app.post("/threads/dm", zValidator("json", z.object({ userId: z.string(), otherUserId: z.string() })), async (c) => {
+    const body = c.req.valid("json")
+    const id = await openDm(body.userId, body.otherUserId)
+    if (!id) return c.json({ error: "can't message that neighbor" }, 400)
+    return c.json({ id })
+  })
+
+  app.get("/threads/:id/messages", async (c) => {
+    const userId = c.req.query("userId")
+    if (!userId) return c.json({ error: "userId required" }, 400)
+    const thread = await readThread(c.req.param("id"), userId)
+    if (!thread) return c.json({ error: "not a member of this conversation" }, 403)
+    return c.json(thread)
+  })
+
+  app.post("/threads/:id/messages", zValidator("json", z.object({
+    userId: z.string(),
+    text: z.string().trim().min(1).max(1000),
+  })), async (c) => {
+    const body = c.req.valid("json")
+    const message = await postToThread(c.req.param("id"), body.userId, body.text)
+    if (!message) return c.json({ error: "not a member of this conversation" }, 403)
+    return c.json(message, 201)
   })
 
   app.get("/users/:id/alerts", async (c) => {
