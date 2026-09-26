@@ -20,6 +20,8 @@ export type TreePin = {
   blockId: string
   sensorId: string | null
   address: string
+  portraitUrl?: string | null
+  drawingPortrait?: boolean
 }
 
 export type TreeDetail = TreePin & {

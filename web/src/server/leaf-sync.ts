@@ -27,6 +27,7 @@ const treeRow = z.object({
   adopters: z.number().int().nonnegative().optional(),
   lastWateredAt: z.string().nullable().optional(),
   threshold: z.number().optional(),
+  portraitUrl: z.string().url().nullable().optional(),
 })
 
 const neighborRow = z.object({
@@ -116,6 +117,7 @@ export async function pullFromLeaf(env: Env) {
       adopters?: number
       lastWateredAt?: string | null
       threshold?: number
+      portraitUrl?: string | null
     }[]
     // The list endpoint has no moisture; keep whatever the last push recorded.
     await syncTrees(
@@ -132,6 +134,8 @@ export async function pullFromLeaf(env: Env) {
         adopters: pin.adopters,
         lastWateredAt: pin.lastWateredAt ?? null,
         threshold: pin.threshold,
+        // Only absolute URLs load in the browser; a relative one means the API has no public address yet.
+        ...(pin.portraitUrl?.startsWith('http') ? { portraitUrl: pin.portraitUrl } : {}),
       })),
     )
   }

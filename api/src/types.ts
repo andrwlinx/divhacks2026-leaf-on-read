@@ -24,6 +24,8 @@ export type TreeDoc = {
   thankedEpisodeId: string | null
   thirstEpisodeAt: string | null
   lastWateredAt: string | null
+  /** When its Grok Imagine portrait was last drawn (also a cache-buster for the image URL). */
+  portraitAt?: string | null
 }
 
 export type UserDoc = {

@@ -29,6 +29,7 @@ export const treesSchema: CollectionSchema = {
     { name: 'adopters', storage: 'number', interpretation: 'plain' },
     { name: 'lastWateredAt', storage: 'text', interpretation: 'plain' },
     { name: 'threshold', storage: 'number', interpretation: 'plain' },
+    { name: 'portraitUrl', storage: 'text', interpretation: 'plain' },
     { name: 'syncedAt', storage: 'text', interpretation: 'plain' },
   ],
   uniqueOn: ['treeId'],

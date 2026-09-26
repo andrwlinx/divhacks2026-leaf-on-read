@@ -1,3 +1,4 @@
+import { publicApiUrl } from "../env.ts"
 import type { TreeDoc } from "../types.ts"
 
 // Pushes live changes to the DeepSpace Block Board (web/src/server/leaf-sync.ts).
@@ -17,6 +18,7 @@ type BoardTree = {
   adopters: number
   lastWateredAt: string | null
   threshold: number
+  portraitUrl?: string | null
 }
 
 const lastPush = new Map<string, { status: string; moisture: number | null; at: number }>()
@@ -71,6 +73,10 @@ export function pushTree(tree: TreeDoc, moisture?: number | null, force = false)
     adopters: tree.adopterIds.length,
     lastWateredAt: tree.lastWateredAt,
     threshold: tree.thirstThreshold,
+    // The board loads images from the public API, so only send an absolute URL.
+    ...(publicApiUrl && tree.portraitAt
+      ? { portraitUrl: `${publicApiUrl}/trees/${tree._id}/portrait?v=${encodeURIComponent(tree.portraitAt)}` }
+      : {}),
     ...(moisture === undefined ? {} : { moisture: moisture === null ? null : Math.round(moisture * 10) / 10 }),
   }
   send({ trees: [row] })

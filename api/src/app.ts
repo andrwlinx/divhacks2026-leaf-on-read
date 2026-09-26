@@ -11,6 +11,7 @@ import { speechConfigured, transcribe } from "./lib/speech.ts"
 import { cachedVoice, clipAudio, speakClip, synthesizeVoice } from "./lib/voice.ts"
 import { pushTree } from "./lib/deepspace.ts"
 import { listThreads, openDm, postToThread, readThread } from "./services/threads.ts"
+import { drawPortraitSoon, isDrawing, portraitFor } from "./services/portraits.ts"
 import {
   blockLeaderboard,
   chatWithTree,
@@ -316,7 +317,27 @@ export function createApp() {
     await trees().updateOne({ _id: tree._id }, { $set: naming, $addToSet: { adopterIds: userId } })
     const next = await treeById(tree._id)
     if (next) pushTree(next, undefined, true)
+    // A newly named tree gets its portrait drawn in the background.
+    if (next && !tree.name && !next.portraitAt) drawPortraitSoon(next)
     return c.json(next)
+  })
+
+  app.get("/trees/:id/portrait", async (c) => {
+    const portrait = await portraitFor(c.req.param("id"))
+    if (!portrait) return c.json({ error: "no portrait yet" }, 404)
+    return c.body(new Uint8Array(portrait.bytes), 200, {
+      "Content-Type": portrait.mimeType,
+      // The URL carries ?v=<portraitAt>, so a redraw is a new URL.
+      "Cache-Control": "public, max-age=86400",
+    })
+  })
+
+  // Draw (or redraw) a tree's portrait; used to backfill trees named before portraits existed.
+  app.post("/trees/:id/portrait", async (c) => {
+    const tree = await treeById(c.req.param("id"))
+    if (!tree) return c.json({ error: "not found" }, 404)
+    if (!tree.name) return c.json({ error: "adopt and name the tree first" }, 400)
+    return c.json({ drawing: drawPortraitSoon(tree) || isDrawing(tree._id) }, 202)
   })
 
   app.post("/trees/:id/waterings", zValidator("json", z.object({
@@ -557,6 +578,8 @@ function publicTree(tree: TreeDoc) {
     adopters: tree.adopterIds.length,
     lastWateredAt: tree.lastWateredAt,
     threshold: tree.thirstThreshold,
+    portraitUrl: tree.portraitAt ? `${publicApiUrl}/trees/${tree._id}/portrait?v=${encodeURIComponent(tree.portraitAt)}` : null,
+    drawingPortrait: isDrawing(tree._id),
   }
 }
 

@@ -26,6 +26,7 @@ type Tree = {
   moisture: number | null
   hasSensor: boolean
   claimedBy: string | null
+  portraitUrl?: string | null
   syncedAt: string
 }
 type Neighbor = { leafUserId: string; name: string; gallons: number; streak: number }
@@ -144,7 +145,20 @@ function TreeCard({ tree }: { tree: Tree }) {
   return (
     <div className="flex flex-col gap-4 rounded-3xl bg-card p-5 shadow-sm" data-testid="tree-card">
       <div className="flex items-center gap-4 rounded-2xl p-3" style={{ background: meta.soft }}>
-        <TreeFace mood={meta.mood} size={84} />
+        {tree.portraitUrl ? (
+          <div className="relative h-24 w-24 shrink-0">
+            <img
+              src={tree.portraitUrl}
+              alt={`Portrait of ${tree.name ?? tree.species}`}
+              className="h-24 w-24 rounded-full object-cover shadow-sm"
+            />
+            <div className="absolute -bottom-1 -right-1 overflow-hidden rounded-full border-2 border-white bg-white">
+              <TreeFace mood={meta.mood} size={30} />
+            </div>
+          </div>
+        ) : (
+          <TreeFace mood={meta.mood} size={84} />
+        )}
         <div className="min-w-0">
           <h1 className="truncate text-2xl font-extrabold">{tree.name ?? tree.species}</h1>
           <p className="truncate text-sm text-muted-foreground">
