@@ -82,7 +82,7 @@ Researched 9/26 ([Spaces and Users](https://photon.codes/docs/spectrum-ts/spaces
 
 | Pri | Feature | Description |
 |---|---|---|
-| P0 | Onboarding | Phone number (ties the user to their iMessage identity), name, home block, push permission, then **"Say hi to your tree"**: opens iMessage with a prefilled join code so the user texts the agent first (opt-in; see §4a) |
+| P0 | Onboarding | Phone number (ties the user to their iMessage identity), name, home block, language, push permission, then **"Say hi to your tree"**: opens iMessage with a prefilled join code so the user texts the agent first (opt-in; see §4a) |
 | P0 | Map | Trees near the user; pins colored **thirsty / ok / no sensor**; seeded from the 2015 NYC Street Tree Census around Columbia |
 | P0 | Tree profile | Name, species, persona blurb, live moisture gauge, 7-day chart, last watered, caretakers, **Text this tree** (opens iMessage to the agent's line) |
 | P0 | Log watering | One tap + gallons; a sensor rise auto-confirms it |
@@ -93,6 +93,9 @@ Researched 9/26 ([Spaces and Users](https://photon.codes/docs/spectrum-ts/spaces
 | P2 | Voice replies | Tree replies as ElevenLabs voice notes in iMessage and playable audio in the app |
 | P1 | Hear your tree | ElevenLabs voice clip in the tree's voice on the profile |
 | P1 | Block leaderboard | Gallons and streaks per neighbor (people ranked for contributing, not trees) |
+| P1 | Rain check | Before a thirsty alert, check the forecast; if rain is coming, the tree skips the alert and says so (§8b) |
+| P1 | "I'm on it" claiming | One tap (or text "on it") claims a thirsty tree for 2 hours; other adopters see who's on it and stop getting nagged (§8c) |
+| P1 | Your language | Pick a language at onboarding; the tree texts, chats, and speaks in it (§8d) |
 | P2 | Impact | Gallons delivered, hours trees stayed above threshold, mortality-by-land-use overlay |
 | P2 | Push fallback | Expo push when the iMessage agent is unreachable |
 
@@ -106,9 +109,11 @@ All JSON. Base URL from `EXPO_PUBLIC_API_URL`.
 | GET | `/trees` | `?bbox=minLng,minLat,maxLng,maxLat` | `Tree[]` with `status` | App, web map |
 | GET | `/trees/:id` | — | `Tree` + latest reading + caretakers | App, web map |
 | GET | `/trees/:id/readings` | `?range=24h\|7d` | hourly `{t, moisture}` | App, web map |
-| POST | `/users` | `{phone, name, blockId, pushToken?}` | `User` | App |
+| POST | `/users` | `{phone, name, blockId, language, pushToken?}` | `User` | App |
 | POST | `/trees/:id/adopt` | `{userId, name}` | `Tree` with persona | App |
 | POST | `/trees/:id/waterings` | `{userId, gallons, photoBase64?}` | `Watering` with `verified` | App, agent |
+| POST | `/trees/:id/claim` | `{userId}` | `{claim: {userId, name, until}}`, `409` if already claimed | App, agent |
+| DELETE | `/trees/:id/claim` | `{userId}` | `204` | App, agent |
 | GET | `/blocks/:id/leaderboard` | — | `[{userId, name, gallons, streak}]` | App, web map |
 | POST | `/trees/:id/chat` | `{userId, message, channel: "app"\|"imessage"}` | `{reply, actions[], voiceUrl?}` | App, agent |
 | GET | `/trees/:id/chat` | `?userId=&limit=50` | message history | App |
@@ -118,21 +123,22 @@ All JSON. Base URL from `EXPO_PUBLIC_API_URL`.
 ```json
 POST {AGENT_URL}/events
 {
-  "type": "thirsty" | "thanks",
+  "type": "thirsty" | "thanks" | "rain_skip" | "claimed" | "claim_expired",
   "treeId": "...",
   "treeName": "Gus",
-  "persona": "grumpy retired jazz musician oak",
   "moisturePct": 18,
-  "recipients": ["+12125550123"],
-  "voiceUrl": "https://api.../trees/:id/voice?type=thirsty"
+  "messages": [
+    { "phone": "+12125550123", "language": "es", "text": "…", "voiceUrl": "https://api.../voice/abc.mp3" }
+  ]
 }
 ```
+The API writes each message in the recipient's language; the agent only delivers `text` (and `voiceUrl` if present) to each `phone`.
 
 ## 7. Data model
 
 **MongoDB**
-- `users` `{_id, phone, name, blockId, pushToken, createdAt}`
-- `trees` `{_id, censusId, species, lat, lng, address, blockId, name, persona, sensorId, adopterIds[], thirstThreshold, status, lastAlertAt}`
+- `users` `{_id, phone, name, blockId, language, pushToken, createdAt}`
+- `trees` `{_id, censusId, species, lat, lng, address, blockId, name, persona, sensorId, adopterIds[], thirstThreshold, status, lastAlertAt, claim: {userId, until} | null, rainSkipUntil}`
 - `waterings` `{_id, treeId, userId, gallons, photoUrl, verified, source: "app" | "imessage", at}`
 - `messages` `{_id, treeId, userId, role: "user" | "tree", text, channel: "app" | "imessage", actions[], at}`
 - `blocks` `{_id, name, bbox}`
@@ -156,6 +162,7 @@ SELECT create_hypertable('readings', 'time');
 - **Calibrate** each sensor at setup: record raw values in dry and saturated soil, then store the threshold on the tree.
 - **Thirsty** = average moisture below threshold for 2 consecutive windows (hourly in production, ~1 minute in demo mode via `DEMO_MODE=1`).
 - **Cooldown:** at most one alert per tree every 6 hours (30 s in demo mode).
+- **Before alerting**, run the rain check (§8b) and skip alerts while the tree is claimed (§8c).
 - **Clears** when a watering is logged or moisture rises back above threshold; a sensor rise after a watering sends a `thanks` event.
 
 ## 8a. Talking to the tree
@@ -181,6 +188,29 @@ SELECT create_hypertable('readings', 'time');
 **Routing iMessage threads to a tree:** a user's thread talks to their most recently adopted tree by default; mentioning another tree by name ("hey Maple") switches the thread to it.
 
 **Stretch:** swap Mongo history for Backboard long-term memory (another sponsor prize) so the tree remembers facts about each neighbor across weeks.
+
+## 8b. Rain check
+
+- When a tree turns thirsty, fetch the next 12 h of hourly precipitation for its location from [Open-Meteo](https://open-meteo.com/) (free, no API key). Cache per block for 30 min.
+- **Skip** if expected rain ≥ 6 mm (~¼ in) with probability ≥ 60% (tunable). Send a `rain_skip` event once (*"Rain's coming tonight, you're off the hook 🌧️"*) and set `rainSkipUntil` to the end of the rain window.
+- **After the window:** if moisture is still below threshold, the rain wasn't enough, so alert normally.
+- **Demo:** `DEMO_FORCE_RAIN=1` fakes a forecast so the skip can be shown on demand.
+- The tree's chat context includes the forecast, so "should I water you today?" gets a weather-aware answer.
+
+## 8c. "I'm on it" claiming
+
+- A thirsty-alert recipient taps **I'm on it** in the app, or texts "on it" (the chat brain calls the `claim` tool).
+- The tree is claimed for **2 hours** (2 min in demo mode). Other adopters get a `claimed` event: *"Andrew's on it 💪"*. No more thirsty alerts go out while it's claimed.
+- Logging a watering (or a sensor rise) clears the claim and triggers `thanks`.
+- If the claim expires with no watering, send `claim_expired` to the other adopters and resume normal alerts.
+- Only one active claim per tree; a second claim returns `409` with who holds it.
+
+## 8d. Your language
+
+- Onboarding asks for a language (start with English, Spanish, Chinese, Bengali, Russian, Haitian Creole, Korean, Arabic; stored as a code like `es`).
+- Alert texts, chat replies, and the voice all use the recipient's language. Grok writes in that language with the same persona; ElevenLabs uses its multilingual model with the tree's voice.
+- Group messages (if we get a dedicated line) use the block's most common language.
+- Out of scope: translating the app's own UI.
 
 ## 9. Task list
 
@@ -216,12 +246,15 @@ Legend: **A** = Andrew (app/API), **HW** = hardware teammate, **AG** = agent tea
 - [ ] **A** Adopt flow; Grok generates persona + name suggestions. *Done when:* a new tree has a persona within 5 s.
 - [ ] **A** Chat tool calls: `log_watering`, `get_status`, `rename`. *Done when:* texting "I watered you" clears the thirsty status.
 - [ ] **A** In-app chat screen on the tree profile, showing history from both channels. *Done when:* a message sent over iMessage also appears in the app thread.
+- [ ] **A** Rain check (§8b): Open-Meteo lookup, skip logic, `rain_skip` event, `DEMO_FORCE_RAIN`. *Done when:* a dry-out with forced rain sends the rain message instead of a thirsty alert.
+- [ ] **A** Claiming (§8c): claim endpoints, `claim` chat tool, 2-hour expiry, `claimed` / `claim_expired` events, **I'm on it** button on the profile and map. *Done when:* claiming from one phone stops alerts to the other and shows "Andrew's on it."
+- [ ] **A** Language (§8d): picker in onboarding, `language` on users, per-recipient message text, multilingual voice. *Done when:* a Spanish-speaking user gets the thirsty alert and chat replies in Spanish.
 - [ ] **A** (P2) Voice replies: ElevenLabs audio for chat replies, returned as `voiceUrl`.
 - [ ] **A** Gemini photo check on watering. *Done when:* a photo of a bucket at a tree returns `verified: true`, a random photo returns `false`.
 - [ ] **A** ElevenLabs voice endpoint with caching; play button on profile.
 - [ ] **A** Block leaderboard screen.
 - [ ] **A** Enable CORS for read endpoints; hand the base URL to the web map owner.
-- [ ] **AG** Handle `join <userCode>` messages → link phone to user. Handle `thirsty`/`thanks` events as DMs to each recipient (group chat only if we have a dedicated line); forward "I watered it" replies to `POST /waterings`.
+- [ ] **AG** Handle `join <userCode>` messages → link phone to user. Deliver each event's `messages[]` as DMs (all types: `thirsty`, `thanks`, `rain_skip`, `claimed`, `claim_expired`) (group chat only if we have a dedicated line); forward "I watered it" replies to `POST /waterings`.
 - [ ] **TBD** DeepSpace web map at `leafonread.tech` reading `/trees` and `/leaderboard`.
 
 ### Phase 4: Freeze (6 → 10:30 AM Sun)
@@ -263,6 +296,7 @@ XAI_API_KEY=
 ELEVENLABS_API_KEY=
 ELEVENLABS_VOICE_ID=
 DEMO_MODE=1
+DEMO_FORCE_RAIN=0
 
 # app/.env
 EXPO_PUBLIC_API_URL=
