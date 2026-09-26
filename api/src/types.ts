@@ -33,6 +33,8 @@ export type UserDoc = {
   imessageId?: string | null
   name: string
   blockId: string
+  /** What the neighbor calls home: a reverse-geocoded street or what they typed ("W 116th St & Amsterdam"). */
+  homeBlock?: string | null
   language: string
   pushToken?: string | null
   userCode: string

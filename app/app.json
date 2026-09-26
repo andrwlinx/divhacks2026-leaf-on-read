@@ -48,7 +48,13 @@
       "expo-image",
       "expo-status-bar",
       "expo-web-browser",
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Leaf on Read uses your location once to find your block and the trees near you."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": false,

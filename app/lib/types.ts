@@ -7,6 +7,7 @@ export type User = {
   blockId: string
   language: string
   userCode: string
+  homeBlock?: string | null
 }
 
 export type TreePin = {
@@ -110,4 +111,14 @@ export type MyStats = {
 export type BlockActivity = {
   waterings: { id: string; treeId: string; treeName: string; name: string; gallons: number; at: string }[]
   thirsty: { id: string; name: string; claimedBy: string | null }[]
+}
+
+export type NearBlock = {
+  blockId: string
+  name: string
+  inArea: boolean
+  nearbyTrees: number
+  needCaretakers: number
+  thirsty: number
+  neighbors: number
 }

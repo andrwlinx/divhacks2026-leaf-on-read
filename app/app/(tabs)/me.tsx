@@ -45,6 +45,12 @@ export default function Me() {
       <View style={styles.hero}>
         <Avatar name={user.name} size={72} />
         <Text style={styles.heroName}>{user.name}</Text>
+        {user.homeBlock ? (
+          <View style={styles.home}>
+            <Icon name="house.fill" color={colors.leafDeep} size={13} />
+            <Text style={styles.homeText}>{user.homeBlock}</Text>
+          </View>
+        ) : null}
         {stats?.rank ? (
           <Text style={styles.heroMeta}>
             #{stats.rank} of {stats.neighbors} neighbors on your block
@@ -163,6 +169,8 @@ const styles = StyleSheet.create({
   hero: { alignItems: "center", gap: 6, paddingVertical: 6 },
   heroName: { fontFamily: rounded, fontSize: 28, fontWeight: "800", color: colors.ink },
   heroMeta: { color: colors.inkSoft, fontWeight: "600" },
+  home: { flexDirection: "row", alignItems: "center", gap: 5 },
+  homeText: { color: colors.leafDeep, fontWeight: "700" },
   stats: { flexDirection: "row", gap: 8 },
   stat: {
     flex: 1,

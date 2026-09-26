@@ -135,6 +135,7 @@ export function createApp() {
     name: z.string().min(1),
     blockId: z.string().min(1),
     language: z.string().min(2),
+    homeBlock: z.string().trim().max(80).optional(),
     pushToken: z.string().optional(),
   })), async (c) => {
     const body = c.req.valid("json")
@@ -145,12 +146,22 @@ export function createApp() {
       name: body.name,
       blockId: body.blockId,
       language: body.language,
+      homeBlock: body.homeBlock || null,
       pushToken: body.pushToken ?? null,
       userCode: userCode(),
       createdAt: new Date().toISOString(),
     }
     if (!existing) await users().insertOne(user)
-    else if (body.pushToken) await users().updateOne({ _id: user._id }, { $set: { pushToken: body.pushToken } })
+    else {
+      const refresh = {
+        ...(body.pushToken ? { pushToken: body.pushToken } : {}),
+        ...(body.homeBlock ? { homeBlock: body.homeBlock } : {}),
+      }
+      if (Object.keys(refresh).length) {
+        await users().updateOne({ _id: user._id }, { $set: refresh })
+        Object.assign(user, refresh)
+      }
+    }
     if (demoMode) await trees().updateOne({ _id: GUS_ID }, { $addToSet: { adopterIds: user._id } })
     return c.json(user, existing ? 200 : 201)
   })
@@ -244,6 +255,7 @@ export function createApp() {
   app.patch("/users/:id", zValidator("json", z.object({
     name: z.string().trim().min(1).max(40).optional(),
     language: z.string().min(2).max(5).optional(),
+    homeBlock: z.string().trim().max(80).optional(),
   })), async (c) => {
     const patch = c.req.valid("json")
     const user = await users().findOneAndUpdate({ _id: c.req.param("id") }, { $set: patch }, { returnDocument: "after" })
@@ -399,9 +411,33 @@ export function createApp() {
     return c.body(new Uint8Array(audio), 200, { "Content-Type": "audio/mpeg" })
   })
 
+  // Neighborhoods people join. Census block ids (b-108318) are only an internal grouping for trees.
   app.get("/blocks", async (c) => {
-    const rows = await blocks().find().toArray()
+    const rows = await blocks().find({ bbox: { $ne: null } }).toArray()
     return c.json(rows)
+  })
+
+  // Onboarding: which neighborhood a location belongs to, and how much the block around it needs help.
+  app.get("/blocks/near", async (c) => {
+    const lat = Number(c.req.query("lat"))
+    const lng = Number(c.req.query("lng"))
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return c.json({ error: "lat and lng required" }, 400)
+    const hoods = await blocks().find({ bbox: { $ne: null } }).toArray()
+    const inside = hoods.find((hood) => {
+      const [minLng, minLat, maxLng, maxLat] = hood.bbox as number[]
+      return lng >= minLng && lng <= maxLng && lat >= minLat && lat <= maxLat
+    })
+    const hood = inside ?? hoods.find((row) => row._id === GUS_BLOCK) ?? hoods[0]
+    const nearby = (await trees().find({}).toArray()).filter((tree) => metersBetween(lat, lng, tree.lat, tree.lng) <= 400)
+    return c.json({
+      blockId: hood?._id ?? GUS_BLOCK,
+      name: hood?.name ?? "Morningside Heights",
+      inArea: Boolean(inside),
+      nearbyTrees: nearby.length,
+      needCaretakers: nearby.filter((tree) => tree.adopterIds.length === 0).length,
+      thirsty: nearby.filter((tree) => tree.status === "thirsty").length,
+      neighbors: await users().countDocuments({ blockId: hood?._id ?? GUS_BLOCK }),
+    })
   })
 
   // Recent waterings on the block plus who is thirsty right now, for the Block tab.
@@ -453,6 +489,14 @@ export function createApp() {
 }
 
 const digits = (value: string) => value.replace(/\D/g, "").slice(-10)
+
+function metersBetween(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const toRad = (degrees: number) => (degrees * Math.PI) / 180
+  const dLat = toRad(lat2 - lat1)
+  const dLng = toRad(lng2 - lng1)
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2
+  return 6_371_000 * 2 * Math.asin(Math.sqrt(a))
+}
 
 async function userByHandle(handle: string) {
   const linked = await users().findOne({ imessageId: handle })
