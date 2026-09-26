@@ -1,7 +1,7 @@
 import { Icon } from "@/components/icon"
-import { Avatar } from "@/components/kit"
+import { Avatar, Button } from "@/components/kit"
 import { TreeBuddy } from "@/components/tree-buddy"
-import { colors, radius, rounded } from "@/constants/design"
+import { colors, radius, rounded, statusMeta } from "@/constants/design"
 import { api } from "@/lib/api"
 import { markChatRead } from "@/lib/chat-read"
 import { useSession } from "@/lib/session"
@@ -25,6 +25,7 @@ export default function ThreadScreen() {
   const [draft, setDraft] = useState("")
   const [sending, setSending] = useState(false)
   const [error, setError] = useState("")
+  const [acting, setActing] = useState<"claim" | "water" | null>(null)
 
   const fetchThread = useCallback(
     () => api<ThreadDetail>(`/threads/${encodeURIComponent(id ?? "")}/messages?userId=${user?._id}`),
@@ -72,7 +73,30 @@ export default function ThreadScreen() {
     }
   }
 
+  // Answer the tree's "who's got me?" right from the crew chat.
+  async function actOnTree(kind: "claim" | "water") {
+    if (!user || !thread?.tree) return
+    setActing(kind)
+    try {
+      await api(
+        kind === "claim" ? `/trees/${thread.tree.id}/claim` : `/trees/${thread.tree.id}/waterings`,
+        {
+          method: "POST",
+          body: JSON.stringify(kind === "claim" ? { userId: user._id } : { userId: user._id, gallons: 5, source: "app" }),
+        },
+      )
+      setThread(await fetchThread())
+    } catch (caught) {
+      const claimed = caught as Error & { body?: { claim?: { name: string } } }
+      setError(claimed.body?.claim ? `${claimed.body.claim.name} already has this one.` : claimed.message)
+    } finally {
+      setActing(null)
+    }
+  }
+
   const crew = thread?.kind === "crew"
+  const treeMood = thread?.tree ? statusMeta(thread.tree.status).mood : "happy"
+  const lastTreePostId = [...(thread?.messages ?? [])].reverse().find((message) => message.kind === "tree")?._id
   const title = thread?.title ?? "Messages"
   const others = thread?.members.filter((member) => member.id !== user?._id) ?? []
 
@@ -134,6 +158,50 @@ export default function ThreadScreen() {
           const mine = item.senderId === user?._id
           const previous = thread?.messages[index - 1]
           const showName = crew && !mine && previous?.senderId !== item.senderId
+          if (item.kind === "tree") {
+            const tree = thread?.tree
+            const askable = item.action === "claim" && item._id === lastTreePostId && tree?.status === "thirsty"
+            return (
+              <View style={styles.row}>
+                <View style={styles.treeAvatar}>
+                  <TreeBuddy mood={treeMood} size={22} />
+                </View>
+                <View style={styles.theirsWrap}>
+                  {showName ? <Text style={styles.sender}>{item.senderName}</Text> : null}
+                  <View style={[styles.bubble, styles.treeBubble]}>
+                    <Text style={styles.body}>{item.text}</Text>
+                  </View>
+                  {askable && tree?.claim ? (
+                    <Text style={styles.claimed}>
+                      🙋 {tree.claim.userId === user?._id ? "You're" : `${tree.claim.name} is`} on it
+                    </Text>
+                  ) : null}
+                  {askable ? (
+                    <View style={styles.treeActions}>
+                      {!tree?.claim ? (
+                        <Button
+                          label="I'm on it"
+                          icon="hand.raised.fill"
+                          color={colors.soil}
+                          style={styles.treeAction}
+                          busy={acting === "claim"}
+                          onPress={() => void actOnTree("claim")}
+                        />
+                      ) : null}
+                      <Button
+                        label="Watered"
+                        icon="drop.fill"
+                        color={colors.water}
+                        style={styles.treeAction}
+                        busy={acting === "water"}
+                        onPress={() => void actOnTree("water")}
+                      />
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+            )
+          }
           return mine ? (
             <View style={[styles.bubble, styles.mine]}>
               <Text style={styles.mineText}>{item.text}</Text>
@@ -211,6 +279,19 @@ const styles = StyleSheet.create({
   bubble: { borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10 },
   mine: { alignSelf: "flex-end", maxWidth: "78%", backgroundColor: colors.water, borderBottomRightRadius: 6 },
   theirs: { backgroundColor: colors.card, borderBottomLeftRadius: 6 },
+  treeAvatar: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.mint,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  treeBubble: { backgroundColor: colors.mint, borderBottomLeftRadius: 6 },
+  treeActions: { flexDirection: "row", gap: 8, marginTop: 4 },
+  treeAction: { paddingVertical: 10, paddingHorizontal: 14 },
+  claimed: { color: colors.soil, fontWeight: "700", fontSize: 13, marginTop: 2, marginLeft: 4 },
   body: { color: colors.ink, fontSize: 16, lineHeight: 21 },
   mineText: { color: "#fff", fontSize: 16, lineHeight: 21 },
   starters: { flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: 16, paddingBottom: 10 },

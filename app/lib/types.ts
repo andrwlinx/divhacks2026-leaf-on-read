@@ -134,12 +134,22 @@ export type ThreadSummary = {
   last: { text: string; senderId: string | null; senderName: string; at: string } | null
 }
 
-export type NeighborMessage = { _id: string; threadId: string; senderId: string; senderName: string; text: string; at: string }
+export type NeighborMessage = {
+  _id: string
+  threadId: string
+  senderId: string // a neighbor's id, or "tree:<treeId>" when the tree posts in its crew
+  senderName: string
+  text: string
+  at: string
+  kind?: "tree"
+  action?: "claim" | null
+}
 
 export type ThreadDetail = {
   id: string
   kind: "crew" | "dm"
   treeId: string | null
+  tree: { id: string; name: string; status: TreeStatus; claim: { userId: string; name: string; until: string } | null } | null
   title: string
   members: { id: string; name: string }[]
   messages: NeighborMessage[]

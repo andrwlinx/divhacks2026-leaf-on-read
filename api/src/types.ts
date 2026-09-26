@@ -95,7 +95,10 @@ export type ThreadDoc = {
 export type NeighborMessageDoc = {
   _id: string
   threadId: string
-  senderId: string
+  senderId: string // a user id, or "tree:<treeId>" when the tree itself posts in its crew
   text: string
   at: string
+  kind?: "tree"
+  /** A tree post the crew can act on from the chat ("I'm on it"). */
+  action?: "claim" | null
 }

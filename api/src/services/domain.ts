@@ -11,6 +11,7 @@ import { pushNeighbors, pushNote, pushTree } from "../lib/deepspace.ts"
 import { recall, remember } from "../lib/memory.ts"
 import { synthesizeVoice } from "../lib/voice.ts"
 import { characterPrompt, greetingLine, smallTalk } from "./character.ts"
+import { postTreeToCrew } from "./threads.ts"
 import type { AlertDoc, MessageDoc, TreeDoc, UserDoc, WateringDoc } from "../types.ts"
 
 const trees = () => collection<TreeDoc>("trees")
@@ -89,6 +90,8 @@ export async function emitAlert(options: {
   const recipients = await adopterUsers(options.tree, options.exceptUserId)
   const treeName = options.tree.name || "This tree"
   pushNote(options.tree._id, alertText(options.type, "en", treeName, Math.round(options.moisturePct), options.who), "tree")
+  const crew = crewLine(options.type, Math.round(options.moisturePct), options.who)
+  await postTreeToCrew(options.tree, crew.text, crew.action).catch((error) => console.error("crew post failed", error))
   const built = recipients.map((user) => {
     const text = alertText(options.type, user.language, treeName, Math.round(options.moisturePct), options.who)
     const voiceUrl =
@@ -143,6 +146,15 @@ export async function emitAlert(options: {
   }
 }
 
+// What the tree says in its crew chat (English: a crew can mix languages). Thirsty posts carry an "I'm on it" action.
+function crewLine(type: Parameters<typeof alertText>[0], pct: number, who?: string): { text: string; action: "claim" | null } {
+  if (type === "thirsty") return { text: `Soil's at ${pct}% and I'm parched. Who's got me? 💧`, action: "claim" }
+  if (type === "claimed") return { text: `${who ?? "Someone"} is on it 💪 Hang tight, everyone.`, action: null }
+  if (type === "claim_expired") return { text: "Still dry, and nobody made it yet. Anyone around? 💧", action: "claim" }
+  if (type === "rain_skip") return { text: "Rain's coming tonight, so you're all off the hook 🌧️", action: null }
+  return { text: "I can feel the water all the way down. Thank you, crew 💚", action: null }
+}
+
 export async function logWatering(input: {
   treeId: string
   userId: string
@@ -179,6 +191,9 @@ export async function logWatering(input: {
   if (updated) pushTree(updated, undefined, true)
   if (waterer) {
     pushNote(input.treeId, `${waterer.name} poured ${input.gallons} gallons`, "watered", waterer.name)
+    await postTreeToCrew(updated ?? tree, `${waterer.name} just poured ${input.gallons} gallons 💧`).catch((error) =>
+      console.error("crew post failed", error),
+    )
     pushNeighbors(await blockLeaderboard(waterer.blockId))
   }
   await thankIfOpen(input.treeId)

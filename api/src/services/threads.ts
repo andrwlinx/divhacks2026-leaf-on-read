@@ -11,6 +11,14 @@ const trees = () => collection<TreeDoc>("trees")
 const users = () => collection<UserDoc>("users")
 
 export const crewId = (treeId: string) => `crew:${treeId}`
+const treeSender = (treeId: string) => `tree:${treeId}`
+
+/** Display name for a sender id: neighbors by name, the tree by its own name. */
+function senderName(id: string | null | undefined, people: Map<string, string>, treeNames: Map<string, string>) {
+  if (!id) return "A neighbor"
+  if (id.startsWith("tree:")) return treeNames.get(id.slice("tree:".length)) ?? "Your tree"
+  return people.get(id) ?? "A neighbor"
+}
 export const dmId = (a: string, b: string) => `dm:${[a, b].sort().join(":")}`
 
 async function members(threadId: string) {
@@ -60,6 +68,7 @@ export async function listThreads(userId: string) {
     (await users().find({ _id: { $in: [...new Set([...otherIds, ...senderIds])] } }).toArray()).map((user) => [user._id, user.name]),
   )
 
+  const treeNames = new Map(adopted.map((tree) => [tree._id, tree.name ?? tree.species]))
   const crews = adopted.map((tree) => {
     const thread = crewById.get(crewId(tree._id))
     return {
@@ -71,7 +80,7 @@ export async function listThreads(userId: string) {
       otherUserId: null,
       memberCount: tree.adopterIds.length,
       last: thread?.lastAt
-        ? { text: thread.lastText ?? "", senderId: thread.lastSenderId, senderName: people.get(thread.lastSenderId ?? "") ?? "A neighbor", at: thread.lastAt }
+        ? { text: thread.lastText ?? "", senderId: thread.lastSenderId, senderName: senderName(thread.lastSenderId, people, treeNames), at: thread.lastAt }
         : null,
     }
   })
@@ -101,13 +110,18 @@ export async function readThread(threadId: string, userId: string, limit = 60) {
   rows.reverse()
   const people = await users().find({ _id: { $in: [...new Set([...scope.memberIds, ...rows.map((row) => row.senderId)])] } }).toArray()
   const names = new Map(people.map((user) => [user._id, user.name]))
+  const treeNames = new Map(scope.tree ? [[scope.tree._id, scope.tree.name ?? scope.tree.species]] : [])
+  const claim = scope.tree?.claim && Date.parse(scope.tree.claim.until) > Date.now() ? scope.tree.claim : null
   return {
     id: threadId,
     kind: threadId.startsWith("crew:") ? "crew" : "dm",
     treeId: scope.tree?._id ?? null,
+    tree: scope.tree
+      ? { id: scope.tree._id, name: scope.tree.name ?? scope.tree.species, status: scope.tree.status, claim }
+      : null,
     title: scope.tree ? `${scope.tree.name ?? scope.tree.species} crew` : names.get(scope.memberIds.find((id) => id !== userId) ?? "") ?? "A neighbor",
     members: scope.memberIds.map((id) => ({ id, name: names.get(id) ?? "A neighbor" })),
-    messages: rows.map((row) => ({ ...row, senderName: names.get(row.senderId) ?? "A neighbor" })),
+    messages: rows.map((row) => ({ ...row, senderName: senderName(row.senderId, names, treeNames) })),
   }
 }
 
@@ -126,6 +140,36 @@ export async function postToThread(threadId: string, userId: string, text: strin
         memberIds: scope.tree ? [] : scope.memberIds,
         createdAt: message.at,
       },
+    },
+    { upsert: true },
+  )
+  return message
+}
+
+/**
+ * The tree posts in its own crew (thirsty, claimed, watered, thanks). No membership check: the tree is
+ * always in its crew. Demo re-alerts repeat every couple of minutes, so an identical post within ten
+ * minutes is skipped.
+ */
+export async function postTreeToCrew(tree: TreeDoc, text: string, action: "claim" | null = null) {
+  const threadId = crewId(tree._id)
+  const last = await neighborMessages().find({ threadId, senderId: treeSender(tree._id) }).sort({ at: -1 }).limit(1).next()
+  if (last && last.text === text && Date.now() - Date.parse(last.at) < 10 * 60_000) return null
+  const message: NeighborMessageDoc = {
+    _id: randomUUID(),
+    threadId,
+    senderId: treeSender(tree._id),
+    text,
+    at: new Date().toISOString(),
+    kind: "tree",
+    action,
+  }
+  await neighborMessages().insertOne(message)
+  await threads().updateOne(
+    { _id: threadId },
+    {
+      $set: { lastText: text, lastSenderId: message.senderId, lastAt: message.at },
+      $setOnInsert: { kind: "crew", treeId: tree._id, memberIds: [], createdAt: message.at },
     },
     { upsert: true },
   )
