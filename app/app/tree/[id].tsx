@@ -1,11 +1,16 @@
+import { Icon } from "@/components/icon"
+import { Avatar, Button, Card, Pill, SectionTitle } from "@/components/kit"
+import { TreeBuddy } from "@/components/tree-buddy"
+import { colors, radius, rounded, statusMeta } from "@/constants/design"
 import { api } from "@/lib/api"
 import { useSession } from "@/lib/session"
-import { pinColor, type Reading, type TreeDetail } from "@/lib/types"
+import type { Reading, TreeDetail } from "@/lib/types"
+import * as Haptics from "expo-haptics"
 import * as ImagePicker from "expo-image-picker"
 import * as Linking from "expo-linking"
 import { useLocalSearchParams, useRouter } from "expo-router"
 import { useCallback, useEffect, useState } from "react"
-import { Dimensions, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
+import { Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import { LineChart } from "react-native-gifted-charts"
 
 export default function TreeScreen() {
@@ -14,26 +19,37 @@ export default function TreeScreen() {
   const { user, demoMode, setPin } = useSession()
   const [tree, setTree] = useState<TreeDetail | null>(null)
   const [readings, setReadings] = useState<Reading[]>([])
-  const [gallons, setGallons] = useState("5")
+  const [gallons, setGallons] = useState(5)
   const [photo, setPhoto] = useState<string | null>(null)
-  const [demoOpen, setDemoOpen] = useState(true)
+  const [demoOpen, setDemoOpen] = useState(false)
   const [note, setNote] = useState("")
+  const [busy, setBusy] = useState(false)
+
+  const fetchTree = useCallback(
+    () =>
+      Promise.all([
+        api<TreeDetail>(`/trees/${id}`),
+        api<Reading[]>(`/trees/${id}/readings?range=${demoMode ? "live" : "7d"}`),
+      ]),
+    [id, demoMode],
+  )
 
   const load = useCallback(async () => {
-    if (!id) return
-    const [detail, series] = await Promise.all([
-      api<TreeDetail>(`/trees/${id}`),
-      api<Reading[]>(`/trees/${id}/readings?range=${demoMode ? "live" : "7d"}`),
-    ])
+    const [detail, series] = await fetchTree()
     setTree(detail)
     setReadings(series)
-  }, [id, demoMode])
+  }, [fetchTree])
 
   useEffect(() => {
-    void load().catch((error: Error) => setNote(error.message))
-    const timer = setInterval(() => void load().catch(() => null), 2000)
+    if (!id) return
+    const apply = ([detail, series]: [TreeDetail, Reading[]]) => {
+      setTree(detail)
+      setReadings(series)
+    }
+    fetchTree().then(apply, (error: Error) => setNote(error.message))
+    const timer = setInterval(() => fetchTree().then(apply, () => null), 2000)
     return () => clearInterval(timer)
-  }, [load])
+  }, [id, fetchTree])
 
   async function takePhoto() {
     const permission = await ImagePicker.requestCameraPermissionsAsync()
@@ -50,19 +66,27 @@ export default function TreeScreen() {
 
   async function water() {
     if (!user || !id) return
-    await api(`/trees/${id}/waterings`, {
-      method: "POST",
-      body: JSON.stringify({
-        userId: user._id,
-        gallons: Number(gallons) || 5,
-        source: "app",
-        ...(photo ? { photoBase64: photo } : {}),
-      }),
-    })
-    setPhoto(null)
-    setPin(id, "ok")
-    setNote("Logged. Gus should thank you once.")
-    await load()
+    setBusy(true)
+    try {
+      await api(`/trees/${id}/waterings`, {
+        method: "POST",
+        body: JSON.stringify({
+          userId: user._id,
+          gallons,
+          source: "app",
+          ...(photo ? { photoBase64: photo } : {}),
+        }),
+      })
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+      setPhoto(null)
+      setPin(id, "ok")
+      setNote(`Logged ${gallons} gallons. ${tree?.name || "Your tree"} says thank you 💚`)
+      await load()
+    } catch (error) {
+      setNote(error instanceof Error ? error.message : "Couldn't log that.")
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function claim() {
@@ -72,7 +96,7 @@ export default function TreeScreen() {
         method: "POST",
         body: JSON.stringify({ userId: user._id }),
       })
-      setNote("You're on it for the next few minutes.")
+      setNote("You're on it! Neighbors will know.")
       await load()
     } catch (error) {
       const claimed = error as Error & { body?: { claim?: { name: string } } }
@@ -88,112 +112,254 @@ export default function TreeScreen() {
 
   if (!tree) {
     return (
-      <View style={styles.page}>
-        <Text>{note || "Loading the tree…"}</Text>
+      <View style={styles.loading}>
+        <TreeBuddy mood="sleepy" size={100} />
+        <Text style={styles.meta}>{note || "Waking the tree up…"}</Text>
       </View>
     )
   }
 
+  const meta = statusMeta(tree.status)
   const moisture = tree.latest?.moisture
+  const pct = Math.max(0, Math.min(100, moisture ?? 0))
   const chart = readings.map((point) => ({ value: point.moisture }))
   if (chart.length === 1) chart.push(chart[0])
   const agent = process.env.EXPO_PUBLIC_AGENT_PHONE
+  const name = tree.name || tree.species
+  const mine = tree.claim && user && tree.claim.userId === user._id
 
   return (
     <ScrollView contentContainerStyle={styles.page}>
-      <Text style={styles.name}>{tree.name || tree.species}</Text>
-      <Text style={styles.meta}>{tree.species} · {tree.address}</Text>
-      {tree.persona ? <Text style={styles.persona}>{tree.persona}</Text> : null}
-      <View style={styles.gaugeTrack}>
-        <View style={[styles.gaugeFill, { width: `${Math.max(0, Math.min(100, moisture ?? 0))}%`, backgroundColor: pinColor(tree.status) }]} />
+      <View style={[styles.hero, { backgroundColor: meta.soft }]}>
+        <TreeBuddy mood={meta.mood} size={130} />
+        <Text style={styles.name}>{name}</Text>
+        <Text style={styles.meta}>
+          {tree.species} · {tree.address}
+        </Text>
+        <Pill label={meta.label} icon={meta.icon} color={meta.color} soft={colors.card} />
       </View>
-      <Text style={styles.moisture}>{moisture === undefined || moisture === null ? "No reading yet" : `${Math.round(moisture)}% moisture`}</Text>
-      {chart.length > 0 ? (
-        <LineChart
-          data={chart}
-          width={Dimensions.get("window").width - 72}
-          height={160}
-          color="#1B4332"
-          thickness={3}
-          hideDataPoints
-          curved
-          maxValue={100}
-          noOfSections={4}
-          yAxisColor="#E4D9C8"
-          xAxisColor="#E4D9C8"
-          rulesColor="#EFE6D8"
-          yAxisTextStyle={{ color: "#6B6258" }}
-          initialSpacing={8}
-        />
-      ) : (
-        <Text style={styles.meta}>The live line shows up as soon as the sensor writes.</Text>
-      )}
-      <Text style={styles.section}>Caretakers</Text>
-      <Text style={styles.meta}>{tree.caretakers.map((person) => person.name).join(", ") || "Nobody yet"}</Text>
-      {tree.claim ? <Text style={styles.meta}>{tree.claim.name} is on it.</Text> : null}
-      <Text style={styles.section}>Log watering</Text>
-      <TextInput style={styles.input} value={gallons} onChangeText={setGallons} keyboardType="number-pad" />
-      <Pressable style={styles.secondary} onPress={() => void takePhoto()}>
-        <Text style={styles.secondaryText}>{photo ? "Photo attached" : "Add a photo"}</Text>
-      </Pressable>
-      <Pressable style={styles.button} onPress={() => void water()}>
-        <Text style={styles.buttonText}>I watered it</Text>
-      </Pressable>
-      <Pressable style={styles.secondary} onPress={() => void claim()}>
-        <Text style={styles.secondaryText}>I'm on it</Text>
-      </Pressable>
-      <Pressable style={styles.secondary} onPress={() => router.push({ pathname: "/tree/[id]/chat", params: { id: tree.id } })}>
-        <Text style={styles.secondaryText}>Talk to {tree.name || "this tree"}</Text>
-      </Pressable>
-      {agent ? (
-        <Pressable
-          style={styles.secondary}
-          onPress={() => Linking.openURL(`sms:${agent}&body=${encodeURIComponent(`Hey ${tree.name || "tree"}`)}`)}
-        >
-          <Text style={styles.secondaryText}>Text this tree</Text>
-        </Pressable>
+
+      {tree.persona ? (
+        <Card style={styles.quote}>
+          <Icon name="quote.opening" color={colors.leaf} size={18} />
+          <Text style={styles.persona}>{tree.persona}</Text>
+        </Card>
       ) : null}
+
+      {tree.claim ? (
+        <View style={styles.claim}>
+          <Icon name="hand.raised.fill" color={colors.soil} size={18} />
+          <Text style={styles.claimText}>
+            {mine ? "You're" : `${tree.claim.name} is`} on it until{" "}
+            {new Date(tree.claim.until).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+          </Text>
+        </View>
+      ) : null}
+
+      <Card>
+        <View style={styles.moistureRow}>
+          <View style={styles.dropBadge}>
+            <Icon name="drop.fill" color={colors.water} size={22} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.big}>{moisture === undefined || moisture === null ? "—" : `${Math.round(moisture)}%`}</Text>
+            <Text style={styles.meta}>soil moisture · thirsty below {tree.threshold}%</Text>
+          </View>
+        </View>
+        <View style={styles.track}>
+          <View style={[styles.fill, { width: `${pct}%`, backgroundColor: meta.color }]} />
+          <View style={[styles.threshold, { left: `${tree.threshold}%` }]} />
+        </View>
+        {chart.length > 0 ? (
+          <LineChart
+            data={chart}
+            areaChart
+            width={Dimensions.get("window").width - 100}
+            height={140}
+            adjustToWidth
+            color={colors.water}
+            startFillColor={colors.water}
+            endFillColor={colors.water}
+            startOpacity={0.3}
+            endOpacity={0.02}
+            thickness={3}
+            hideDataPoints
+            curved
+            maxValue={100}
+            noOfSections={4}
+            yAxisThickness={0}
+            xAxisThickness={0}
+            rulesType="dashed"
+            rulesColor={colors.line}
+            yAxisTextStyle={{ color: colors.muted, fontSize: 11 }}
+            initialSpacing={4}
+          />
+        ) : (
+          <Text style={styles.meta}>The live line shows up as soon as the sensor writes.</Text>
+        )}
+      </Card>
+
+      <Card>
+        <SectionTitle icon="heart.fill" title={`Help ${name}`} color={colors.thirsty} />
+        <View style={styles.stepper}>
+          <StepButton icon="minus" onPress={() => setGallons((value) => Math.max(1, value - 1))} />
+          <View style={styles.stepValue}>
+            <Text style={styles.big}>{gallons}</Text>
+            <Text style={styles.meta}>gallons</Text>
+          </View>
+          <StepButton icon="plus" onPress={() => setGallons((value) => Math.min(40, value + 1))} />
+        </View>
+        <Button
+          label={photo ? "Photo attached" : "Add a photo"}
+          icon={photo ? "checkmark.circle.fill" : "camera.fill"}
+          variant="soft"
+          color={colors.leafDeep}
+          onPress={() => void takePhoto()}
+        />
+        <Button label="I watered it" icon="drop.fill" color={colors.water} busy={busy} onPress={() => void water()} />
+        <View style={styles.actions}>
+          <Button
+            label="I'm on it"
+            icon="hand.raised.fill"
+            variant="outline"
+            color={colors.soil}
+            style={styles.action}
+            onPress={() => void claim()}
+          />
+          <Button
+            label="Chat"
+            icon="bubble.left.and.bubble.right.fill"
+            variant="outline"
+            color={colors.leafDeep}
+            style={styles.action}
+            onPress={() => router.push({ pathname: "/tree/[id]/chat", params: { id: tree.id } })}
+          />
+        </View>
+        {agent ? (
+          <Button
+            label="Text this tree"
+            icon="message.fill"
+            variant="soft"
+            color={colors.leaf}
+            onPress={() => void Linking.openURL(`sms:${agent}&body=${encodeURIComponent(`Hey ${tree.name || "tree"}`)}`)}
+          />
+        ) : null}
+        {note ? <Text style={styles.note}>{note}</Text> : null}
+      </Card>
+
+      <Card>
+        <SectionTitle icon="person.2.fill" title="Caretakers" color={colors.leafDeep} />
+        {tree.caretakers.length ? (
+          <View style={styles.people}>
+            {tree.caretakers.map((person) => (
+              <View key={person.id} style={styles.person}>
+                <Avatar name={person.name} size={40} />
+                <Text style={styles.personName} numberOfLines={1}>
+                  {person.name}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.meta}>Nobody yet. Be the first! 🌱</Text>
+        )}
+      </Card>
+
       {demoMode && tree.sensorId ? (
         <View style={styles.demo}>
-          <Pressable onPress={() => setDemoOpen((open) => !open)}>
-            <Text style={styles.section}>Demo controls {demoOpen ? "▾" : "▸"}</Text>
+          <Pressable style={styles.demoHeader} onPress={() => setDemoOpen((open) => !open)}>
+            <Icon name="wrench.and.screwdriver.fill" color={colors.muted} size={14} />
+            <Text style={styles.demoTitle}>Demo controls</Text>
+            <Icon name={demoOpen ? "chevron.up" : "chevron.down"} color={colors.muted} size={12} />
           </Pressable>
           {demoOpen ? (
             <View style={styles.demoRow}>
-              <Pressable style={styles.demoButton} onPress={() => void demo(15, "thirsty")}>
-                <Text style={styles.buttonText}>Pull from soil</Text>
-              </Pressable>
-              <Pressable style={styles.demoButton} onPress={() => void demo(80, "ok")}>
-                <Text style={styles.buttonText}>Back in the pot</Text>
-              </Pressable>
-              <Pressable style={styles.secondary} onPress={() => void api("/demo/rain", { method: "POST" })}>
-                <Text style={styles.secondaryText}>Rain's coming</Text>
-              </Pressable>
+              <Button label="Pull from soil" icon="arrow.up.circle.fill" color={colors.thirsty} onPress={() => void demo(15, "thirsty")} />
+              <Button label="Back in the pot" icon="arrow.down.circle.fill" color={colors.leaf} onPress={() => void demo(80, "ok")} />
+              <Button
+                label="Rain's coming"
+                icon="cloud.rain.fill"
+                variant="soft"
+                color={colors.water}
+                onPress={() => void api("/demo/rain", { method: "POST" })}
+              />
             </View>
           ) : null}
         </View>
       ) : null}
-      {note ? <Text style={styles.note}>{note}</Text> : null}
     </ScrollView>
   )
 }
 
+function StepButton({ icon, onPress }: { icon: "minus" | "plus"; onPress: () => void }) {
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.step, pressed && { opacity: 0.6 }]}
+      onPress={() => {
+        void Haptics.selectionAsync()
+        onPress()
+      }}
+    >
+      <Icon name={icon} color={colors.water} size={18} weight="bold" />
+    </Pressable>
+  )
+}
+
 const styles = StyleSheet.create({
-  page: { padding: 20, gap: 8, paddingBottom: 48 },
-  name: { fontSize: 32, fontWeight: "700", color: "#1B4332" },
-  meta: { color: "#3D2B1F" },
-  persona: { color: "#243027", lineHeight: 22 },
-  gaugeTrack: { height: 14, backgroundColor: "#E4D9C8", borderRadius: 99, overflow: "hidden", marginTop: 8 },
-  gaugeFill: { height: 14 },
-  moisture: { fontWeight: "700", color: "#1B4332" },
-  section: { marginTop: 12, fontWeight: "700", color: "#1B4332", fontSize: 16 },
-  input: { backgroundColor: "#fff", borderRadius: 12, padding: 12, borderWidth: 1, borderColor: "#E4D9C8" },
-  button: { backgroundColor: "#1B4332", borderRadius: 14, paddingVertical: 14, alignItems: "center" },
-  buttonText: { color: "#F6F1E7", fontWeight: "700" },
-  secondary: { borderRadius: 14, paddingVertical: 14, alignItems: "center", borderWidth: 1, borderColor: "#1B4332" },
-  secondaryText: { color: "#1B4332", fontWeight: "700" },
-  demo: { marginTop: 8 },
+  page: { padding: 16, gap: 14, paddingBottom: 56 },
+  loading: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
+  hero: { alignItems: "center", borderRadius: radius.lg, paddingVertical: 22, paddingHorizontal: 16, gap: 6 },
+  name: { fontFamily: rounded, fontSize: 32, fontWeight: "800", color: colors.ink },
+  meta: { color: colors.inkSoft, textAlign: "center" },
+  quote: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+  persona: { flex: 1, color: colors.ink, lineHeight: 22, fontStyle: "italic" },
+  claim: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: colors.sunSoft,
+    borderRadius: radius.md,
+    padding: 14,
+  },
+  claimText: { fontFamily: rounded, fontWeight: "700", color: colors.soil, flex: 1 },
+  moistureRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  dropBadge: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: colors.waterSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  big: { fontFamily: rounded, fontSize: 30, fontWeight: "800", color: colors.ink },
+  track: { height: 14, backgroundColor: colors.bg, borderRadius: 99, overflow: "hidden" },
+  fill: { height: 14, borderRadius: 99 },
+  threshold: { position: "absolute", top: 0, bottom: 0, width: 2, backgroundColor: colors.ink, opacity: 0.35 },
+  stepper: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  step: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.waterSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepValue: { alignItems: "center" },
+  actions: { flexDirection: "row", gap: 10 },
+  action: { flex: 1 },
+  note: { color: colors.leafDeep, fontWeight: "600", textAlign: "center" },
+  people: { flexDirection: "row", flexWrap: "wrap", gap: 14 },
+  person: { alignItems: "center", gap: 4, width: 60 },
+  personName: { fontSize: 12, color: colors.inkSoft },
+  demo: {
+    borderWidth: 1.5,
+    borderStyle: "dashed",
+    borderColor: colors.line,
+    borderRadius: radius.lg,
+    padding: 14,
+    gap: 10,
+  },
+  demoHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
+  demoTitle: { flex: 1, color: colors.muted, fontWeight: "700" },
   demoRow: { gap: 8 },
-  demoButton: { backgroundColor: "#3D2B1F", borderRadius: 14, paddingVertical: 14, alignItems: "center" },
-  note: { color: "#1B4332" },
 })

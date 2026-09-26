@@ -1,10 +1,14 @@
 import { BlockMap } from "@/components/block-map"
+import { Icon } from "@/components/icon"
+import { TreeBuddy } from "@/components/tree-buddy"
+import { colors, radius, rounded, shadow, statusMeta } from "@/constants/design"
 import { api } from "@/lib/api"
 import { useSession } from "@/lib/session"
-import type { TreePin } from "@/lib/types"
+import type { TreePin, TreeStatus } from "@/lib/types"
 import { useFocusEffect, useRouter } from "expo-router"
 import { useCallback, useState } from "react"
 import { Pressable, StyleSheet, Text, View } from "react-native"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
 
 type Region = {
   latitude: number
@@ -28,9 +32,12 @@ function bbox(region: Region) {
   return `${minLng},${minLat},${maxLng},${maxLat}`
 }
 
+const legend: TreeStatus[] = ["thirsty", "ok", "no_sensor"]
+
 export default function MapScreen() {
   const router = useRouter()
-  const { pinOverrides, reconcilePins } = useSession()
+  const insets = useSafeAreaInsets()
+  const { user, pinOverrides, reconcilePins } = useSession()
   const [region, setRegion] = useState(initialRegion)
   const [trees, setTrees] = useState<TreePin[]>([])
   const [error, setError] = useState("")
@@ -51,8 +58,12 @@ export default function MapScreen() {
       void load(region)
       const timer = setInterval(() => void load(region), 15_000)
       return () => clearInterval(timer)
-    }, [load, region, reconcilePins]),
+    }, [load, region]),
   )
+
+  const counts = { thirsty: 0, ok: 0, no_sensor: 0 }
+  for (const tree of trees) counts[pinOverrides[tree.id] ?? tree.status] += 1
+  const needy = counts.thirsty > 0
 
   return (
     <View style={styles.page}>
@@ -66,35 +77,113 @@ export default function MapScreen() {
         }}
         onOpen={(id) => router.push({ pathname: "/tree/[id]", params: { id } })}
       />
-      <Pressable style={styles.board} onPress={() => router.push("/leaderboard")}>
+
+      <View style={[styles.top, { top: insets.top + 8 }]}>
+        <View style={styles.header}>
+          <View style={[styles.buddy, { backgroundColor: needy ? colors.thirstySoft : colors.mint }]}>
+            <TreeBuddy mood={needy ? "thirsty" : "happy"} size={34} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.title}>{user ? `Hi ${user.name} 👋` : "Leaf on Read"}</Text>
+            <Text style={styles.subtitle}>
+              {needy ? `${counts.thirsty} tree${counts.thirsty === 1 ? "" : "s"} on your block need water` : "Every tree on your block is happy"}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.legend}>
+          {legend.map((status) => {
+            const meta = statusMeta(status)
+            return (
+              <View key={status} style={[styles.legendItem, { backgroundColor: meta.soft }]}>
+                <Icon name={meta.icon} color={meta.color} size={12} />
+                <Text style={[styles.legendText, { color: meta.color }]}>
+                  {counts[status]} {meta.label.toLowerCase()}
+                </Text>
+              </View>
+            )
+          })}
+        </View>
+      </View>
+
+      {error ? (
+        <View style={[styles.error, { top: insets.top + 132 }]}>
+          <Icon name="wifi.exclamationmark" color={colors.thirsty} size={16} />
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      ) : null}
+
+      <Text style={[styles.credit, { bottom: insets.bottom + 8 }]}>© Esri</Text>
+      <Pressable style={[styles.board, { bottom: insets.bottom + 18 }]} onPress={() => router.push("/leaderboard")}>
+        <Icon name="trophy.fill" color={colors.sun} size={18} />
         <Text style={styles.boardText}>Block leaderboard</Text>
       </Pressable>
-      {error ? <Text style={styles.error}>{error}</Text> : null}
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1 },
-  board: {
+  page: { flex: 1, backgroundColor: "#FFFFFF" },
+  credit: {
     position: "absolute",
-    bottom: 28,
-    alignSelf: "center",
-    backgroundColor: "#1B4332",
-    borderRadius: 999,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
+    left: 12,
+    color: colors.muted,
+    fontSize: 10,
   },
-  boardText: { color: "#F6F1E7", fontWeight: "700" },
-  error: {
+  top: {
     position: "absolute",
-    top: 12,
     left: 12,
     right: 12,
-    backgroundColor: "#fff",
-    color: "#C44536",
-    padding: 10,
-    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.96)",
+    borderRadius: radius.lg,
+    padding: 14,
+    gap: 10,
+    ...shadow,
+  },
+  header: { flexDirection: "row", alignItems: "center", gap: 12 },
+  buddy: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
     overflow: "hidden",
   },
+  title: { fontFamily: rounded, fontSize: 20, fontWeight: "800", color: colors.ink },
+  subtitle: { color: colors.inkSoft, marginTop: 1 },
+  legend: { flexDirection: "row", gap: 6 },
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  legendText: { fontFamily: rounded, fontWeight: "700", fontSize: 12 },
+  board: {
+    position: "absolute",
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: colors.leafDeep,
+    borderRadius: 999,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    ...shadow,
+    shadowOpacity: 0.25,
+  },
+  boardText: { color: "#fff", fontFamily: rounded, fontWeight: "800", fontSize: 16 },
+  error: {
+    position: "absolute",
+    left: 12,
+    right: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: colors.thirstySoft,
+    padding: 12,
+    borderRadius: radius.sm,
+  },
+  errorText: { color: colors.thirsty, fontWeight: "600", flex: 1 },
 })

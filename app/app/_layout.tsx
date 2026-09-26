@@ -1,3 +1,6 @@
+import { Icon } from "@/components/icon"
+import { TreeBuddy } from "@/components/tree-buddy"
+import { colors, radius, rounded } from "@/constants/design"
 import { SessionProvider, useSession } from "@/lib/session"
 import { useAudioPlayer } from "expo-audio"
 import * as Haptics from "expo-haptics"
@@ -11,18 +14,20 @@ export default function RootLayout() {
     <SessionProvider>
       <Stack
         screenOptions={{
-          headerStyle: { backgroundColor: "#F6F1E7" },
-          headerTintColor: "#1B4332",
-          headerTitleStyle: { fontWeight: "700" },
-          contentStyle: { backgroundColor: "#F6F1E7" },
+          headerStyle: { backgroundColor: colors.bg },
+          headerShadowVisible: false,
+          headerTintColor: colors.leafDeep,
+          headerTitleStyle: { fontFamily: rounded, fontWeight: "700", color: colors.ink },
+          headerBackButtonDisplayMode: "minimal",
+          contentStyle: { backgroundColor: colors.bg },
         }}
       >
         <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen name="onboarding" options={{ title: "Meet your block", headerBackVisible: false }} />
-        <Stack.Screen name="map" options={{ title: "Leaf on Read" }} />
-        <Stack.Screen name="leaderboard" options={{ title: "The block" }} />
-        <Stack.Screen name="tree/[id]" options={{ title: "Tree" }} />
-        <Stack.Screen name="tree/[id]/chat" options={{ title: "Text" }} />
+        <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+        <Stack.Screen name="map" options={{ headerShown: false }} />
+        <Stack.Screen name="leaderboard" options={{ title: "Block leaderboard" }} />
+        <Stack.Screen name="tree/[id]" options={{ title: "" }} />
+        <Stack.Screen name="tree/[id]/chat" options={{ title: "Chat" }} />
       </Stack>
       <AlertBanner />
     </SessionProvider>
@@ -40,20 +45,26 @@ function AlertBanner() {
   }, [banner])
 
   if (!banner) return null
+  const mood = banner.type === "thirsty" || banner.type === "claim_expired" ? "thirsty" : "happy"
   return (
     <Pressable
-      style={[styles.banner, { top: insets.top + 8 }]}
+      style={[styles.banner, { top: insets.top + 6 }]}
       onPress={() => {
         dismissBanner()
         router.push({ pathname: "/tree/[id]", params: { id: banner.treeId } })
       }}
     >
       <View style={styles.avatar}>
-        <Text style={styles.avatarText}>{banner.treeName.slice(0, 1)}</Text>
+        <TreeBuddy mood={mood} size={38} />
       </View>
       <View style={styles.copy}>
-        <Text style={styles.name}>{banner.treeName}</Text>
-        <Text style={styles.text}>{banner.text}</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.name}>{banner.treeName}</Text>
+          <Text style={styles.now}>now</Text>
+        </View>
+        <Text style={styles.text} numberOfLines={3}>
+          {banner.text}
+        </Text>
       </View>
       {banner.voiceUrl ? <PlayClip url={banner.voiceUrl} /> : null}
     </Pressable>
@@ -71,7 +82,7 @@ function PlayClip({ url }: { url: string }) {
         player.play()
       }}
     >
-      <Text style={styles.playText}>Play</Text>
+      <Icon name="play.fill" color="#fff" size={14} />
     </Pressable>
   )
 }
@@ -79,32 +90,40 @@ function PlayClip({ url }: { url: string }) {
 const styles = StyleSheet.create({
   banner: {
     position: "absolute",
-    left: 12,
-    right: 12,
+    left: 10,
+    right: 10,
     zIndex: 20,
-    backgroundColor: "#F7F7F8",
-    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.97)",
+    borderRadius: radius.lg,
     padding: 12,
     flexDirection: "row",
     gap: 10,
     alignItems: "center",
-    shadowColor: "#1B4332",
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
+    shadowColor: colors.ink,
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
   },
   avatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: "#1B4332",
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.mint,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  copy: { flex: 1 },
+  titleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  name: { fontFamily: rounded, fontWeight: "800", color: colors.ink, fontSize: 15 },
+  now: { color: colors.muted, fontSize: 12 },
+  text: { color: colors.ink, marginTop: 2, lineHeight: 19 },
+  play: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.leafDeep,
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarText: { color: "#F6F1E7", fontWeight: "700", fontSize: 18 },
-  copy: { flex: 1 },
-  name: { fontWeight: "700", color: "#1B4332" },
-  text: { color: "#243027", marginTop: 2 },
-  play: { backgroundColor: "#1B4332", borderRadius: 14, paddingHorizontal: 10, paddingVertical: 8 },
-  playText: { color: "#F6F1E7", fontWeight: "700", fontSize: 12 },
 })
