@@ -242,6 +242,12 @@ export default function TreeScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.big}>{moisture === undefined || moisture === null ? "—" : `${Math.round(moisture)}%`}</Text>
             <Text style={styles.meta}>soil moisture · thirsty below {tree.threshold}%</Text>
+            {tree.sensorLive ? (
+              <View style={styles.liveSensor}>
+                <View style={styles.liveDot} />
+                <Text style={styles.liveText}>Live from the sensor in Gus&apos;s soil</Text>
+              </View>
+            ) : null}
           </View>
         </View>
         <View style={styles.track}>
@@ -373,8 +379,15 @@ export default function TreeScreen() {
           </Pressable>
           {demoOpen ? (
             <View style={styles.demoRow}>
-              <Button label="Pull from soil" icon="arrow.up.circle.fill" color={colors.thirsty} onPress={() => void demo(15, "thirsty")} />
-              <Button label="Back in the pot" icon="arrow.down.circle.fill" color={colors.leaf} onPress={() => void demo(80, "ok")} />
+              {tree.sensorLive ? (
+                // The real Arduino is feeding readings; the simulated buttons would be ignored.
+                <Text style={styles.demoNote}>🔌 Real sensor connected. Pull it out of the soil to make Gus thirsty.</Text>
+              ) : (
+                <>
+                  <Button label="Pull from soil" icon="arrow.up.circle.fill" color={colors.thirsty} onPress={() => void demo(15, "thirsty")} />
+                  <Button label="Back in the pot" icon="arrow.down.circle.fill" color={colors.leaf} onPress={() => void demo(80, "ok")} />
+                </>
+              )}
               <Button
                 label="Rain's coming"
                 icon="cloud.rain.fill"
@@ -473,4 +486,8 @@ const styles = StyleSheet.create({
   demoHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
   demoTitle: { flex: 1, color: colors.muted, fontWeight: "700" },
   demoRow: { gap: 8 },
+  demoNote: { color: colors.leafDeep, fontWeight: "700", lineHeight: 20 },
+  liveSensor: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.leaf },
+  liveText: { color: colors.leafDeep, fontWeight: "700", fontSize: 12 },
 })

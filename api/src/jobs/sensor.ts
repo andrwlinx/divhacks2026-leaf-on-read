@@ -10,6 +10,8 @@ export function startSensor() {
 }
 
 async function tick() {
+  // The real sensor is plugged in and reporting; don't fight it. Resumes ~10s after it goes quiet.
+  if (demoState.hardwareLive) return
   const tree = await treeById(GUS_ID).catch(() => null)
   if (!tree) return
   await recordReading({

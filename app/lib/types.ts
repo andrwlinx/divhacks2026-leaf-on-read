@@ -31,6 +31,8 @@ export type TreeDetail = TreePin & {
   claim: { userId: string; name: string; until: string } | null
   latest: { moisture: number; temp: number | null; light: number | null; t: string } | null
   caretakers: { id: string; name: string }[]
+  /** The real Arduino is plugged in and reporting for this tree right now. */
+  sensorLive?: boolean
 }
 
 export type Reading = { t: string; moisture: number }

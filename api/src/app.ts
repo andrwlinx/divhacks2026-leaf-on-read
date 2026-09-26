@@ -5,12 +5,12 @@ import { z } from "zod"
 import { collection, database } from "./db/mongo.ts"
 import { pool, hourlyBuckets, latestReading, minuteBuckets, readingsSince } from "./db/tiger.ts"
 import { demoState } from "./demoState.ts"
-import { demoMode, GUS_BLOCK, GUS_ID, publicApiUrl } from "./env.ts"
+import { demoMode, GUS_BLOCK, GUS_ID, GUS_SENSOR, publicApiUrl } from "./env.ts"
 import { alertText } from "./copy.ts"
 import { speechConfigured, transcribe } from "./lib/speech.ts"
 import { cachedVoice, clipAudio, speakClip, synthesizeVoice } from "./lib/voice.ts"
-import { pushTree } from "./lib/deepspace.ts"
-import { listThreads, openDm, postToThread, readThread } from "./services/threads.ts"
+import { pushNote, pushTree } from "./lib/deepspace.ts"
+import { listThreads, openDm, postToThread, postTreeToCrew, readThread } from "./services/threads.ts"
 import { drawPortraitSoon, isDrawing, portraitFor } from "./services/portraits.ts"
 import { buySticker, checkIn, placeSticker, treeStickers, wallet } from "./services/coins.ts"
 import { catalog, slots, stickerArt, stickerImageUrl } from "./services/stickers.ts"
@@ -38,10 +38,11 @@ const blocks = () => collection<BlockDoc>("blocks")
 
 const readingBody = z.object({
   sensorId: z.string().min(1),
-  moisture: z.number(),
-  temp: z.number(),
-  light: z.number(),
-  ts: z.string().min(1),
+  moisture: z.number().min(0).max(100),
+  // The Arduino kit has no temperature or light sensor wired yet, so these may be null.
+  temp: z.number().nullable().optional(),
+  light: z.number().nullable().optional(),
+  ts: z.string().min(1).optional(),
 })
 
 export function createApp() {
@@ -68,18 +69,19 @@ export function createApp() {
       tiger = false
     }
     const ok = mongo && tiger
-    return c.json({ ok, mongo, tiger, demoMode }, ok ? 200 : 503)
+    return c.json({ ok, mongo, tiger, demoMode, sensorLive: demoState.hardwareLive }, ok ? 200 : 503)
   })
 
   app.post("/readings", zValidator("json", readingBody), async (c) => {
     const body = c.req.valid("json")
-    const time = new Date(body.ts)
+    const time = body.ts ? new Date(body.ts) : new Date()
     if (Number.isNaN(time.getTime())) return c.json({ error: "bad ts" }, 400)
+    if (body.sensorId === GUS_SENSOR) demoState.markHardwareReading()
     const tree = await recordReading({
       sensorId: body.sensorId,
       moisture: body.moisture,
-      temp: body.temp,
-      light: body.light,
+      temp: body.temp ?? null,
+      light: body.light ?? null,
       time,
     })
     return c.json({ ok: true, treeId: tree?._id ?? null }, 201)
@@ -117,6 +119,8 @@ export function createApp() {
         ? { moisture: latest.moisture, temp: latest.temp, light: latest.light, t: latest.time.toISOString() }
         : null,
       caretakers: caretakers.map((user) => ({ id: user._id, name: user.name })),
+      // The real Arduino is plugged in and reporting for this tree (demo controls step aside).
+      sensorLive: tree.sensorId === GUS_SENSOR && demoState.hardwareLive,
     })
   })
 
@@ -304,6 +308,23 @@ export function createApp() {
     const message = await postToThread(c.req.param("id"), body.userId, body.text)
     if (!message) return c.json({ error: "not a member of this conversation" }, 403)
     return c.json(message, 201)
+  })
+
+  // Events the Arduino reports (petting Gus's touch sensor, a watering it felt): the tree tells its crew.
+  app.post("/sensors/:sensorId/events", zValidator("json", z.object({ event: z.string().min(1).max(60) })), async (c) => {
+    const tree = await trees().findOne({ sensorId: c.req.param("sensorId") })
+    if (!tree) return c.json({ error: "unknown sensor" }, 404)
+    const { event } = c.req.valid("json")
+    const lines: Record<string, string> = {
+      gus_petted: "Someone just gave me a pat 🥰",
+      watering_detected: "I just felt water hit my roots 💧",
+    }
+    const line = lines[event]
+    if (line) {
+      await postTreeToCrew(tree, line).catch((error) => console.error("crew post failed", error))
+      pushNote(tree._id, line, "tree")
+    }
+    return c.json({ ok: true, posted: Boolean(line) })
   })
 
   // Coins and stickers.
