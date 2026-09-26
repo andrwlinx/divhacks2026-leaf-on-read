@@ -250,12 +250,26 @@ export async function claimTree(treeId: string, userId: string) {
   return { claim }
 }
 
+/**
+ * "I can't make it after all." Clears the claim; if the tree is still thirsty, it tells its crew and resets the
+ * alert clock so the other caretakers get a fresh thirsty text within seconds instead of waiting out the claim.
+ */
 export async function releaseClaim(treeId: string, userId: string) {
   const tree = await treeById(treeId)
   if (!tree?.claim) return true
   if (tree.claim.userId !== userId) return false
-  await trees().updateOne({ _id: treeId }, { $set: { claim: null } })
+  const stillThirsty = tree.status === "thirsty"
+  await trees().updateOne(
+    { _id: treeId },
+    { $set: { claim: null, ...(stillThirsty ? { lastAlertAt: null } : {}) } },
+  )
   pushTree({ ...tree, claim: null }, undefined, true)
+  const who = tree.claim.name
+  await postTreeToCrew(
+    tree,
+    stillThirsty ? `${who} can't make it after all. Still need someone 💧` : `${who} is off the hook. I'm doing okay for now.`,
+    stillThirsty ? "claim" : null,
+  ).catch((error) => console.error("crew post failed", error))
   return true
 }
 
@@ -284,6 +298,12 @@ const chatTools = [
     type: "function",
     name: "claim",
     description: "Only when the person says they're on their way to water you.",
+    parameters: { type: "object", properties: {} },
+  },
+  {
+    type: "function",
+    name: "release_claim",
+    description: "Only when the person said they were on it but now can't make it (cancel their claim).",
     parameters: { type: "object", properties: {} },
   },
 ]
@@ -436,6 +456,9 @@ async function runTool(
     await trees().updateOne({ _id: treeId }, { $set: { name: args.name || tree.name } })
     return { renamed: true, name: args.name }
   }
+  if (name === "release_claim") {
+    return { released: await releaseClaim(treeId, userId) }
+  }
   if (name === "claim") {
     const result = await claimTree(treeId, userId)
     return result
@@ -457,6 +480,13 @@ async function localReply(
     return {
       reply: `Oh, I can feel that all the way down to my roots. Thank you, ${user.name}. You're a real one.`,
       actions: [{ name: "log_watering", gallons: 5 }],
+    }
+  }
+  if (/can'?t make it|cancel|not on it|can'?t come/i.test(message)) {
+    await releaseClaim(tree._id, user._id)
+    return {
+      reply: `No worries, ${user.name}. I'll ask the others. Thanks for trying 💚`,
+      actions: [{ name: "release_claim" }],
     }
   }
   if (/\bon it\b/i.test(message)) {

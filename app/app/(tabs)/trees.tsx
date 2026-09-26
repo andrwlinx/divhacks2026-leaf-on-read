@@ -5,6 +5,7 @@ import { CardStickers } from "@/components/card-stickers"
 import { TreePortrait } from "@/components/tree-portrait"
 import { colors, radius, rounded, statusMeta } from "@/constants/design"
 import { api } from "@/lib/api"
+import { cancelClaim } from "@/lib/messaging"
 import { useSession } from "@/lib/session"
 import type { MyTree } from "@/lib/types"
 import * as Haptics from "expo-haptics"
@@ -40,6 +41,17 @@ export default function MyTrees() {
       return () => clearInterval(timer)
     }, [load]),
   )
+
+  async function cancel(tree: MyTree) {
+    if (!user) return
+    try {
+      await cancelClaim(tree.id, user._id)
+      setNote(`No worries. ${tree.name ?? "Your tree"}'s crew knows it still needs someone.`)
+      await load()
+    } catch (error) {
+      setNote(error instanceof Error ? error.message : "Couldn't cancel that.")
+    }
+  }
 
   async function act(tree: MyTree, kind: "water" | "claim") {
     if (!user) return
@@ -148,6 +160,11 @@ export default function MyTrees() {
               <View style={styles.claim}>
                 <Icon name="hand.raised.fill" color={colors.soil} size={14} />
                 <Text style={styles.claimText}>{mine ? "You're" : `${tree.claim.name} is`} on it</Text>
+                {mine ? (
+                  <Pressable hitSlop={8} onPress={() => void cancel(tree)}>
+                    <Text style={styles.cancelClaim}>Cancel</Text>
+                  </Pressable>
+                ) : null}
               </View>
             ) : null}
 
@@ -220,6 +237,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
+  cancelClaim: { color: colors.thirsty, fontWeight: "800", fontSize: 13, marginLeft: 6 },
   claimText: { fontFamily: rounded, fontWeight: "700", color: colors.soil, fontSize: 13 },
   actions: { flexDirection: "row", gap: 8 },
   action: { flex: 1, paddingVertical: 12, paddingHorizontal: 8 },

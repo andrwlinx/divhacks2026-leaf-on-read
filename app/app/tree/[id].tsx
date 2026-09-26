@@ -6,7 +6,7 @@ import { CardStickers } from "@/components/card-stickers"
 import { TreePortrait } from "@/components/tree-portrait"
 import { colors, radius, rounded, statusMeta } from "@/constants/design"
 import { api } from "@/lib/api"
-import { messageNeighbor, openCrew } from "@/lib/messaging"
+import { cancelClaim, messageNeighbor, openCrew } from "@/lib/messaging"
 import { useSession } from "@/lib/session"
 import type { Reading, TreeDetail } from "@/lib/types"
 import * as Haptics from "expo-haptics"
@@ -111,6 +111,18 @@ export default function TreeScreen() {
       setNote(error instanceof Error ? error.message : "Couldn't adopt right now.")
     } finally {
       setAdopting(false)
+    }
+  }
+
+  async function unclaim() {
+    if (!user || !id) return
+    try {
+      await cancelClaim(id, user._id)
+      void Haptics.selectionAsync()
+      setNote("No worries. We let the rest of the crew know.")
+      await load()
+    } catch (error) {
+      setNote(error instanceof Error ? error.message : "Couldn't cancel that.")
     }
   }
 
@@ -231,6 +243,11 @@ export default function TreeScreen() {
             {mine ? "You're" : `${tree.claim.name} is`} on it until{" "}
             {new Date(tree.claim.until).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
           </Text>
+          {mine ? (
+            <Pressable hitSlop={8} onPress={() => void unclaim()}>
+              <Text style={styles.cancelClaim}>Cancel</Text>
+            </Pressable>
+          ) : null}
         </View>
       ) : null}
 
@@ -303,12 +320,12 @@ export default function TreeScreen() {
         <Button label="I watered it" icon="drop.fill" color={colors.water} busy={busy} onPress={() => void water()} />
         <View style={styles.actions}>
           <Button
-            label="I'm on it"
-            icon="hand.raised.fill"
+            label={mine ? "Can't make it" : "I'm on it"}
+            icon={mine ? "xmark.circle.fill" : "hand.raised.fill"}
             variant="outline"
-            color={colors.soil}
+            color={mine ? colors.thirsty : colors.soil}
             style={styles.action}
-            onPress={() => void claim()}
+            onPress={() => void (mine ? unclaim() : claim())}
           />
           <Button
             label="Chat"
@@ -445,6 +462,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     padding: 14,
   },
+  cancelClaim: { color: colors.thirsty, fontWeight: "800", fontSize: 14 },
   claimText: { fontFamily: rounded, fontWeight: "700", color: colors.soil, flex: 1 },
   moistureRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   dropBadge: {

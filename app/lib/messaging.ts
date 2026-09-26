@@ -15,3 +15,8 @@ export async function messageNeighbor(router: Router, userId: string, otherUserI
 export function openCrew(router: Router, treeId: string) {
   router.push({ pathname: "/thread/[id]", params: { id: `crew:${treeId}` } })
 }
+
+/** "I can't make it after all": drop your claim so the tree asks the rest of its crew again. */
+export async function cancelClaim(treeId: string, userId: string) {
+  await api(`/trees/${treeId}/claim`, { method: "DELETE", body: JSON.stringify({ userId }) })
+}

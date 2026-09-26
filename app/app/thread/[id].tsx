@@ -4,6 +4,7 @@ import { TreeBuddy } from "@/components/tree-buddy"
 import { colors, radius, rounded, statusMeta } from "@/constants/design"
 import { api } from "@/lib/api"
 import { markChatRead } from "@/lib/chat-read"
+import { cancelClaim } from "@/lib/messaging"
 import { useSession } from "@/lib/session"
 import type { NeighborMessage, ThreadDetail } from "@/lib/types"
 import { Stack, useLocalSearchParams, useRouter } from "expo-router"
@@ -74,8 +75,17 @@ export default function ThreadScreen() {
   }
 
   // Answer the tree's "who's got me?" right from the crew chat.
-  async function actOnTree(kind: "claim" | "water") {
+  async function actOnTree(kind: "claim" | "water" | "cancel") {
     if (!user || !thread?.tree) return
+    if (kind === "cancel") {
+      try {
+        await cancelClaim(thread.tree.id, user._id)
+        setThread(await fetchThread())
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : "Couldn't cancel that.")
+      }
+      return
+    }
     setActing(kind)
     try {
       const result = await api<{ coinsEarned?: number }>(
@@ -173,9 +183,16 @@ export default function ThreadScreen() {
                     <Text style={styles.body}>{item.text}</Text>
                   </View>
                   {askable && tree?.claim ? (
-                    <Text style={styles.claimed}>
-                      🙋 {tree.claim.userId === user?._id ? "You're" : `${tree.claim.name} is`} on it
-                    </Text>
+                    <View style={styles.claimedRow}>
+                      <Text style={styles.claimed}>
+                        🙋 {tree.claim.userId === user?._id ? "You're" : `${tree.claim.name} is`} on it
+                      </Text>
+                      {tree.claim.userId === user?._id ? (
+                        <Pressable hitSlop={8} onPress={() => void actOnTree("cancel")}>
+                          <Text style={styles.cancelClaim}>Cancel</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
                   ) : null}
                   {askable ? (
                     <View style={styles.treeActions}>
@@ -292,6 +309,8 @@ const styles = StyleSheet.create({
   treeBubble: { backgroundColor: colors.mint, borderBottomLeftRadius: 6 },
   treeActions: { flexDirection: "row", gap: 8, marginTop: 4 },
   treeAction: { paddingVertical: 10, paddingHorizontal: 14 },
+  claimedRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  cancelClaim: { color: colors.thirsty, fontWeight: "800", fontSize: 13, marginTop: 2 },
   claimed: { color: colors.soil, fontWeight: "700", fontSize: 13, marginTop: 2, marginLeft: 4 },
   body: { color: colors.ink, fontSize: 16, lineHeight: 21 },
   mineText: { color: "#fff", fontSize: 16, lineHeight: 21 },
