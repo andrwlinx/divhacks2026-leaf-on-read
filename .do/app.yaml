@@ -21,6 +21,8 @@ services:
     envs:
       - { key: DEMO_MODE, value: "1" }
       - { key: XAI_MODEL, value: grok-4.20-0309-non-reasoning }
+      - { key: XAI_IMAGE_MODEL, value: grok-imagine-image-2.0 }
+      - { key: GEMINI_MODEL, value: gemini-3.8-flash }
       - { key: AGENT_URL, value: "http://agent:4000" }
       - { key: PUBLIC_API_URL, value: "${APP_URL}" }
       - { key: MONGODB_URI, type: SECRET, value: set-in-dashboard }
