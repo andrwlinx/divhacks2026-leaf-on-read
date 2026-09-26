@@ -12,6 +12,8 @@ import { cachedVoice, clipAudio, speakClip, synthesizeVoice } from "./lib/voice.
 import { pushTree } from "./lib/deepspace.ts"
 import { listThreads, openDm, postToThread, readThread } from "./services/threads.ts"
 import { drawPortraitSoon, isDrawing, portraitFor } from "./services/portraits.ts"
+import { buySticker, checkIn, placeSticker, treeStickers, wallet } from "./services/coins.ts"
+import { catalog, slots, stickerArt, stickerImageUrl } from "./services/stickers.ts"
 import {
   blockLeaderboard,
   chatWithTree,
@@ -291,6 +293,52 @@ export function createApp() {
     const message = await postToThread(c.req.param("id"), body.userId, body.text)
     if (!message) return c.json({ error: "not a member of this conversation" }, 403)
     return c.json(message, 201)
+  })
+
+  // Coins and stickers.
+  app.post("/users/:id/checkin", async (c) => {
+    const result = await checkIn(c.req.param("id"))
+    if (!result) return c.json({ error: "not found" }, 404)
+    return c.json(result)
+  })
+
+  app.get("/users/:id/wallet", async (c) => {
+    const result = await wallet(c.req.param("id"))
+    if (!result) return c.json({ error: "not found" }, 404)
+    return c.json(result)
+  })
+
+  app.get("/stickers", (c) =>
+    c.json(catalog.map(({ subject: _subject, ...sticker }) => ({ ...sticker, imageUrl: stickerImageUrl(sticker.id) }))),
+  )
+
+  app.get("/stickers/:id/image", async (c) => {
+    const art = await stickerArt().findOne({ _id: c.req.param("id") })
+    if (!art) return c.json({ error: "not drawn yet" }, 404)
+    return c.body(new Uint8Array(art.image.buffer), 200, { "Content-Type": art.mimeType, "Cache-Control": "public, max-age=86400" })
+  })
+
+  app.post("/users/:id/stickers/:stickerId/buy", async (c) => {
+    const result = await buySticker(c.req.param("id"), c.req.param("stickerId"))
+    if ("error" in result) {
+      const status = result.error === "not_found" || result.error === "unknown_sticker" ? 404 : 409
+      return c.json({ error: result.error }, status)
+    }
+    return c.json(result.wallet)
+  })
+
+  app.put("/trees/:id/stickers", zValidator("json", z.object({
+    userId: z.string(),
+    slot: z.enum(slots as [string, ...string[]]),
+    stickerId: z.string().nullable(),
+  })), async (c) => {
+    const body = c.req.valid("json")
+    const result = await placeSticker(c.req.param("id"), body.userId, body.slot as (typeof slots)[number], body.stickerId)
+    if ("error" in result) {
+      const status = result.error === "not_found" ? 404 : result.error === "wrong_slot" ? 400 : 403
+      return c.json({ error: result.error }, status)
+    }
+    return c.json(result.tree ? publicTree(result.tree) : null)
   })
 
   app.get("/users/:id/alerts", async (c) => {
@@ -579,6 +627,7 @@ function publicTree(tree: TreeDoc) {
     lastWateredAt: tree.lastWateredAt,
     threshold: tree.thirstThreshold,
     portraitUrl: tree.portraitAt ? `${publicApiUrl}/trees/${tree._id}/portrait?v=${encodeURIComponent(tree.portraitAt)}` : null,
+    stickers: treeStickers(tree),
     drawingPortrait: isDrawing(tree._id),
   }
 }

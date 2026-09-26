@@ -26,6 +26,8 @@ export type TreeDoc = {
   lastWateredAt: string | null
   /** When its Grok Imagine portrait was last drawn (also a cache-buster for the image URL). */
   portraitAt?: string | null
+  /** Stickers neighbors placed on the tree's icon, one per slot; everyone sees them. */
+  stickers?: Partial<Record<"head" | "face" | "side" | "ground", { stickerId: string; by: string }>>
 }
 
 export type UserDoc = {
@@ -37,6 +39,10 @@ export type UserDoc = {
   blockId: string
   /** What the neighbor calls home: a reverse-geocoded street or what they typed ("W 116th St & Amsterdam"). */
   homeBlock?: string | null
+  coins?: number
+  ownedStickers?: string[]
+  checkinDay?: string | null
+  checkinStreak?: number
   language: string
   pushToken?: string | null
   userCode: string
@@ -103,4 +109,13 @@ export type NeighborMessageDoc = {
   kind?: "tree"
   /** A tree post the crew can act on from the chat ("I'm on it"). */
   action?: "claim" | null
+}
+
+export type CoinLedgerDoc = {
+  _id: string
+  userId: string
+  amount: number
+  reason: "checkin" | "watering" | "photo" | "sticker"
+  ref: string | null // tree id for waterings/photos, sticker id for purchases
+  at: string
 }

@@ -19,6 +19,7 @@ type BoardTree = {
   lastWateredAt: string | null
   threshold: number
   portraitUrl?: string | null
+  stickers?: { slot: string; stickerId: string; imageUrl: string }[]
 }
 
 const lastPush = new Map<string, { status: string; moisture: number | null; at: number }>()
@@ -73,7 +74,14 @@ export function pushTree(tree: TreeDoc, moisture?: number | null, force = false)
     adopters: tree.adopterIds.length,
     lastWateredAt: tree.lastWateredAt,
     threshold: tree.thirstThreshold,
-    // The board loads images from the public API, so only send an absolute URL.
+    // The board loads images from the public API, so only send absolute URLs.
+    ...(publicApiUrl
+      ? {
+          stickers: Object.entries(tree.stickers ?? {}).flatMap(([slot, placed]) =>
+            placed ? [{ slot, stickerId: placed.stickerId, imageUrl: `${publicApiUrl}/stickers/${placed.stickerId}/image` }] : [],
+          ),
+        }
+      : {}),
     ...(publicApiUrl && tree.portraitAt
       ? { portraitUrl: `${publicApiUrl}/trees/${tree._id}/portrait?v=${encodeURIComponent(tree.portraitAt)}` }
       : {}),

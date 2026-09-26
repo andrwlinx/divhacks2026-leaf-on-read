@@ -12,6 +12,7 @@ import { recall, remember } from "../lib/memory.ts"
 import { synthesizeVoice } from "../lib/voice.ts"
 import { characterPrompt, greetingLine, smallTalk } from "./character.ts"
 import { postTreeToCrew } from "./threads.ts"
+import { rewardPhoto, rewardWatering } from "./coins.ts"
 import type { AlertDoc, MessageDoc, TreeDoc, UserDoc, WateringDoc } from "../types.ts"
 
 const trees = () => collection<TreeDoc>("trees")
@@ -179,9 +180,16 @@ export async function logWatering(input: {
   // Gemini can take several seconds under load, so the watering counts now and the verdict lands after.
   if (input.photoBase64) {
     void verifyWateringPhoto(input.photoBase64)
-      .then((verified) => waterings().updateOne({ _id: watering._id }, { $set: { verified } }))
+      .then(async (verified) => {
+        await waterings().updateOne({ _id: watering._id }, { $set: { verified } })
+        if (verified) await rewardPhoto(input.userId, input.treeId)
+      })
       .catch((error) => console.error("photo check failed", error))
   }
+  const coinsEarned = await rewardWatering(input.userId, input.treeId, tree.status === "thirsty").catch((error) => {
+    console.error("coin reward failed", error)
+    return 0
+  })
   await trees().updateOne(
     { _id: input.treeId },
     { $set: { status: "ok", lastWateredAt: at, claim: null } },
@@ -197,7 +205,7 @@ export async function logWatering(input: {
     pushNeighbors(await blockLeaderboard(waterer.blockId))
   }
   await thankIfOpen(input.treeId)
-  return watering
+  return { ...watering, coinsEarned }
 }
 
 export async function thankIfOpen(treeId: string) {

@@ -37,3 +37,24 @@ export async function drawPortrait(tree: TreeDoc) {
   if (!image?.b64_json) throw new Error("Imagine returned no image")
   return { image: Buffer.from(image.b64_json, "base64"), mimeType: image.mime_type || "image/jpeg", prompt }
 }
+
+/** A single 1:1 image for any prompt (stickers). */
+export async function drawImage(prompt: string) {
+  const response = await fetch("https://api.x.ai/v1/images/generations", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${process.env.XAI_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: process.env.XAI_IMAGE_MODEL || "grok-imagine-image-2.0",
+      prompt,
+      response_format: "b64_json",
+      aspect_ratio: "1:1",
+      resolution: "1k",
+    }),
+    signal: AbortSignal.timeout(60_000),
+  })
+  if (!response.ok) throw new Error(`Imagine ${response.status}: ${await response.text()}`)
+  const body = (await response.json()) as { data?: { b64_json?: string; mime_type?: string }[] }
+  const image = body.data?.[0]
+  if (!image?.b64_json) throw new Error("Imagine returned no image")
+  return { image: Buffer.from(image.b64_json, "base64"), mimeType: image.mime_type || "image/jpeg" }
+}
