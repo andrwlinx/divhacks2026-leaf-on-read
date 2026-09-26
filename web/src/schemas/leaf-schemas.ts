@@ -30,6 +30,7 @@ export const treesSchema: CollectionSchema = {
     { name: 'lastWateredAt', storage: 'text', interpretation: 'plain' },
     { name: 'threshold', storage: 'number', interpretation: 'plain' },
     { name: 'portraitUrl', storage: 'text', interpretation: 'plain' },
+    { name: 'stickers', storage: 'text', interpretation: { kind: 'json' } },
     { name: 'syncedAt', storage: 'text', interpretation: 'plain' },
   ],
   uniqueOn: ['treeId'],

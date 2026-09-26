@@ -22,6 +22,7 @@ export type TreePin = {
   address: string
   portraitUrl?: string | null
   drawingPortrait?: boolean
+  stickers?: TreeSticker[]
 }
 
 export type TreeDetail = TreePin & {
@@ -156,3 +157,14 @@ export type ThreadDetail = {
   members: { id: string; name: string }[]
   messages: NeighborMessage[]
 }
+
+export type StickerSlot = "head" | "face" | "side" | "ground"
+export type TreeSticker = { slot: StickerSlot; stickerId: string; imageUrl: string }
+export type Sticker = { id: string; name: string; slot: StickerSlot; price: number; imageUrl: string }
+export type Wallet = {
+  coins: number
+  streak: number
+  owned: string[]
+  recent: { amount: number; reason: "checkin" | "watering" | "photo" | "sticker"; ref: string | null; at: string }[]
+}
+export type CoinToast = { id: number; amount: number; text: string }

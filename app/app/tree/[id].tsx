@@ -1,7 +1,8 @@
 import { Icon } from "@/components/icon"
 import { Avatar, Button, Card, Pill, SectionTitle } from "@/components/kit"
 import { TreeBuddy } from "@/components/tree-buddy"
-import { TreePortrait } from "@/components/tree-portrait"
+import { DecorateCard } from "@/components/decorate-card"
+import { TreeIcon } from "@/components/tree-icon"
 import { colors, radius, rounded, statusMeta } from "@/constants/design"
 import { api } from "@/lib/api"
 import { messageNeighbor, openCrew } from "@/lib/messaging"
@@ -18,7 +19,7 @@ import { LineChart } from "react-native-gifted-charts"
 export default function TreeScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const router = useRouter()
-  const { user, demoMode, setPin } = useSession()
+  const { user, demoMode, setPin, flashCoins } = useSession()
   const [tree, setTree] = useState<TreeDetail | null>(null)
   const [readings, setReadings] = useState<Reading[]>([])
   const [gallons, setGallons] = useState(5)
@@ -72,7 +73,7 @@ export default function TreeScreen() {
     if (!user || !id) return
     setBusy(true)
     try {
-      await api(`/trees/${id}/waterings`, {
+      const watered = await api<{ coinsEarned?: number }>(`/trees/${id}/waterings`, {
         method: "POST",
         body: JSON.stringify({
           userId: user._id,
@@ -85,6 +86,7 @@ export default function TreeScreen() {
       setPhoto(null)
       setPin(id, "ok")
       setNote(`Logged ${gallons} gallons. ${tree?.name || "Your tree"} says thank you 💚`)
+      flashCoins(watered.coinsEarned ?? 0, `Watered ${tree?.name || "your tree"}`)
       await load()
     } catch (error) {
       setNote(error instanceof Error ? error.message : "Couldn't log that.")
@@ -154,7 +156,7 @@ export default function TreeScreen() {
   return (
     <ScrollView contentContainerStyle={styles.page}>
       <View style={[styles.hero, { backgroundColor: meta.soft }]}>
-        <TreePortrait url={tree.portraitUrl} mood={meta.mood} size={tree.portraitUrl ? 160 : 130} />
+        <TreeIcon url={tree.portraitUrl} mood={meta.mood} size={tree.portraitUrl ? 160 : 130} stickers={tree.stickers} />
         {tree.drawingPortrait && !tree.portraitUrl ? (
           <Text style={styles.drawing}>🎨 Grok is drawing {tree.name ?? "this tree"}&apos;s portrait…</Text>
         ) : null}
@@ -171,6 +173,16 @@ export default function TreeScreen() {
           onPress={() => router.push({ pathname: "/tree/[id]/talk", params: { id: tree.id } })}
         />
       </View>
+
+      {adopted && user ? (
+        <DecorateCard
+          treeId={tree.id}
+          treeName={name}
+          userId={user._id}
+          placed={tree.stickers ?? []}
+          onChanged={() => void load()}
+        />
+      ) : null}
 
       {!adopted ? (
         <Card style={styles.adopt}>

@@ -17,7 +17,7 @@ const crewStarters = ["I can water tonight 💧", "Who's around this weekend?", 
 export default function ThreadScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const router = useRouter()
-  const { user } = useSession()
+  const { user, flashCoins } = useSession()
   const insets = useSafeAreaInsets()
   const list = useRef<FlatList<NeighborMessage>>(null)
   const pending = useRef(0)
@@ -78,13 +78,14 @@ export default function ThreadScreen() {
     if (!user || !thread?.tree) return
     setActing(kind)
     try {
-      await api(
+      const result = await api<{ coinsEarned?: number }>(
         kind === "claim" ? `/trees/${thread.tree.id}/claim` : `/trees/${thread.tree.id}/waterings`,
         {
           method: "POST",
           body: JSON.stringify(kind === "claim" ? { userId: user._id } : { userId: user._id, gallons: 5, source: "app" }),
         },
       )
+      if (kind === "water") flashCoins(result?.coinsEarned ?? 0, `Watered ${thread.tree.name}`)
       setThread(await fetchThread())
     } catch (caught) {
       const claimed = caught as Error & { body?: { claim?: { name: string } } }

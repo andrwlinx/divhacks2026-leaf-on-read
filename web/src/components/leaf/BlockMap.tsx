@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { MapContainer, Marker, TileLayer } from 'react-leaflet'
 import { statusMeta, type TreeStatus } from './palette'
+import { stickerBadgesHtml, type TreeSticker } from './Stickers'
 import { TreeFace } from './TreeFace'
 
 export type MapTree = {
@@ -15,13 +16,15 @@ export type MapTree = {
   lng: number
   status: TreeStatus
   hasSensor: boolean
+  stickers?: TreeSticker[] | null
 }
 
 const center: [number, number] = [40.8075, -73.9626]
 
 function icon(tree: MapTree, selected: boolean) {
   const meta = statusMeta(tree.status)
-  const big = tree.hasSensor
+  // Sensor trees and adopted (named) trees get the big pin with a name tag and stickers.
+  const big = tree.hasSensor || Boolean(tree.name)
   const size = big ? 54 : 30
   const face = renderToStaticMarkup(<TreeFace mood={meta.mood} size={big ? 40 : 22} />)
   const label = big
@@ -30,7 +33,10 @@ function icon(tree: MapTree, selected: boolean) {
   const html = `
     <div class="leaf-pin ${tree.status === 'thirsty' ? 'leaf-pin-thirsty' : ''} ${selected ? 'leaf-pin-selected' : ''}">
       ${label}
-      <div class="leaf-pin-bubble" style="width:${size}px;height:${size}px;border-color:${meta.color};background:${meta.soft}">${face}</div>
+      <div style="position:relative;width:${size}px;height:${size}px">
+        <div class="leaf-pin-bubble" style="width:${size}px;height:${size}px;border-color:${meta.color};background:${meta.soft}">${face}</div>
+        ${big ? stickerBadgesHtml(tree.stickers, size) : ''}
+      </div>
       <div class="leaf-pin-tail" style="border-top-color:${meta.color}"></div>
     </div>`
   return L.divIcon({ html, className: 'leaf-pin-wrap', iconSize: [size, size + (big ? 30 : 8)], iconAnchor: [size / 2, size + (big ? 30 : 8)] })

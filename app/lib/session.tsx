@@ -1,7 +1,7 @@
 import * as SecureStore from "expo-secure-store"
 import { createContext, useContext, useEffect, useMemo, useState } from "react"
 import { api } from "@/lib/api"
-import type { AlertItem, TreeStatus, User } from "@/lib/types"
+import type { AlertItem, CoinToast, TreeStatus, User } from "@/lib/types"
 
 const KEY = "leaf-user"
 
@@ -17,6 +17,9 @@ type Session = {
   saveUser: (user: User) => Promise<void>
   /** Forget this phone's neighbor (demo hand-off); the app returns to onboarding. */
   clearUser: () => Promise<void>
+  /** The "+10 🪙" toast after a check-in or watering. */
+  coinToast: CoinToast | null
+  flashCoins: (amount: number, text: string) => void
 }
 
 const SessionContext = createContext<Session | null>(null)
@@ -27,6 +30,21 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [demoMode, setDemoMode] = useState(false)
   const [banner, setBanner] = useState<AlertItem | null>(null)
   const [pinOverrides, setPinOverrides] = useState<Record<string, TreeStatus>>({})
+  const [coinToast, setCoinToast] = useState<CoinToast | null>(null)
+
+  // Daily check-in: once per launch; the server pays at most once per New York day.
+  const userId = user?._id
+  useEffect(() => {
+    if (!userId) return
+    api<{ awarded: number; streak: number }>(`/users/${userId}/checkin`, { method: "POST" })
+      .then((result) => {
+        if (result.awarded > 0) {
+          const text = result.streak > 1 ? `Day ${result.streak} streak!` : "Daily check-in"
+          setCoinToast((current) => ({ id: (current?.id ?? 0) + 1, amount: result.awarded, text }))
+        }
+      })
+      .catch(() => null)
+  }, [userId])
 
   useEffect(() => {
     SecureStore.getItemAsync(KEY)
@@ -87,13 +105,17 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         await SecureStore.setItemAsync(KEY, JSON.stringify(next))
         setUser(next)
       },
+      coinToast,
+      flashCoins: (amount, text) => {
+        if (amount > 0) setCoinToast((current) => ({ id: (current?.id ?? 0) + 1, amount, text }))
+      },
       clearUser: async () => {
         await SecureStore.deleteItemAsync(KEY)
         setBanner(null)
         setUser(null)
       },
     }),
-    [ready, user, demoMode, banner, pinOverrides],
+    [ready, user, demoMode, banner, pinOverrides, coinToast],
   )
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>

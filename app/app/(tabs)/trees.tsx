@@ -1,7 +1,7 @@
 import { Icon } from "@/components/icon"
 import { Button, Card, Pill } from "@/components/kit"
 import { TreeBuddy } from "@/components/tree-buddy"
-import { TreePortrait } from "@/components/tree-portrait"
+import { TreeIcon } from "@/components/tree-icon"
 import { colors, radius, rounded, statusMeta } from "@/constants/design"
 import { api } from "@/lib/api"
 import { useSession } from "@/lib/session"
@@ -22,7 +22,7 @@ function ago(iso: string | null) {
 
 export default function MyTrees() {
   const router = useRouter()
-  const { user, setPin } = useSession()
+  const { user, setPin, flashCoins } = useSession()
   const [trees, setTrees] = useState<MyTree[] | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [note, setNote] = useState("")
@@ -45,13 +45,14 @@ export default function MyTrees() {
     setBusy(`${kind}-${tree.id}`)
     try {
       if (kind === "water") {
-        await api(`/trees/${tree.id}/waterings`, {
+        const watered = await api<{ coinsEarned?: number }>(`/trees/${tree.id}/waterings`, {
           method: "POST",
           body: JSON.stringify({ userId: user._id, gallons: 5, source: "app" }),
         })
         setPin(tree.id, "ok")
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
         setNote(`Logged 5 gallons for ${tree.name ?? "your tree"} 💧`)
+        flashCoins(watered.coinsEarned ?? 0, `Watered ${tree.name ?? "your tree"}`)
       } else {
         await api(`/trees/${tree.id}/claim`, { method: "POST", body: JSON.stringify({ userId: user._id }) })
         setNote(`You're on it. Neighbors will know.`)
@@ -89,7 +90,7 @@ export default function MyTrees() {
           <Card key={tree.id} style={tree.status === "thirsty" ? styles.cardThirsty : undefined}>
             <Pressable style={styles.header} onPress={() => router.push({ pathname: "/tree/[id]", params: { id: tree.id } })}>
               <View style={[styles.face, { backgroundColor: meta.soft }]}>
-                <TreePortrait url={tree.portraitUrl} mood={meta.mood} size={tree.portraitUrl ? 64 : 58} badge={false} />
+                <TreeIcon url={tree.portraitUrl} mood={meta.mood} size={tree.portraitUrl ? 64 : 58} badge={false} stickers={tree.stickers} />
               </View>
               <View style={styles.headerText}>
                 <Text style={styles.name} numberOfLines={1}>{tree.name ?? tree.species}</Text>
@@ -167,7 +168,7 @@ const styles = StyleSheet.create({
   emptyText: { color: colors.inkSoft, textAlign: "center", lineHeight: 21, marginBottom: 8 },
   cardThirsty: { borderWidth: 2, borderColor: colors.thirsty },
   header: { flexDirection: "row", alignItems: "center", gap: 12 },
-  face: { width: 64, height: 64, borderRadius: 32, alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  face: { width: 64, height: 64, borderRadius: 32, alignItems: "center", justifyContent: "center" },
   headerText: { flex: 1, gap: 3 },
   name: { fontFamily: rounded, fontSize: 20, fontWeight: "800", color: colors.ink },
   meta: { color: colors.inkSoft, fontSize: 13 },

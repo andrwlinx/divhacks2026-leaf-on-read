@@ -13,6 +13,7 @@ import { AuthOverlay, useAuth, useMutations, usePresenceRoom, useQuery, useUser 
 import { Droplets, Eye, Hand, Send, Trophy } from 'lucide-react'
 import { BlockMap, type MapTree } from '../../components/leaf/BlockMap'
 import { leaf, statusMeta, type TreeStatus } from '../../components/leaf/palette'
+import { StickerBadges, type TreeSticker } from '../../components/leaf/Stickers'
 import { TreeFace } from '../../components/leaf/TreeFace'
 
 type Tree = {
@@ -27,6 +28,7 @@ type Tree = {
   hasSensor: boolean
   claimedBy: string | null
   portraitUrl?: string | null
+  stickers?: TreeSticker[] | null
   syncedAt: string
 }
 type Neighbor = { leafUserId: string; name: string; gallons: number; streak: number }
@@ -152,12 +154,18 @@ function TreeCard({ tree }: { tree: Tree }) {
               alt={`Portrait of ${tree.name ?? tree.species}`}
               className="h-24 w-24 rounded-full object-cover shadow-sm"
             />
-            <div className="absolute -bottom-1 -right-1 overflow-hidden rounded-full border-2 border-white bg-white">
-              <TreeFace mood={meta.mood} size={30} />
-            </div>
+            {tree.stickers?.length ? null : (
+              <div className="absolute -bottom-1 -right-1 overflow-hidden rounded-full border-2 border-white bg-white">
+                <TreeFace mood={meta.mood} size={30} />
+              </div>
+            )}
+            <StickerBadges stickers={tree.stickers} size={96} />
           </div>
         ) : (
-          <TreeFace mood={meta.mood} size={84} />
+          <div className="relative shrink-0" style={{ width: 84, height: 92 }}>
+            <TreeFace mood={meta.mood} size={84} />
+            <StickerBadges stickers={tree.stickers} size={84} />
+          </div>
         )}
         <div className="min-w-0">
           <h1 className="truncate text-2xl font-extrabold">{tree.name ?? tree.species}</h1>

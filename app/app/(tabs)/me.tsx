@@ -4,17 +4,25 @@ import { colors, radius, rounded } from "@/constants/design"
 import { api } from "@/lib/api"
 import { clearChatReads } from "@/lib/chat-read"
 import { useSession } from "@/lib/session"
-import { languages, type MyStats, type User } from "@/lib/types"
+import { languages, type MyStats, type User, type Wallet } from "@/lib/types"
 import * as Haptics from "expo-haptics"
 import * as Linking from "expo-linking"
 import { useFocusEffect, useRouter } from "expo-router"
 import { useCallback, useState } from "react"
 import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 
+const earnedFor: Record<Wallet["recent"][number]["reason"], string> = {
+  checkin: "Daily check-in",
+  watering: "Watered a tree",
+  photo: "Verified watering photo",
+  sticker: "Bought a sticker",
+}
+
 export default function Me() {
   const router = useRouter()
   const { user, saveUser, clearUser } = useSession()
   const [stats, setStats] = useState<MyStats | null>(null)
+  const [wallet, setWallet] = useState<Wallet | null>(null)
   const [name, setName] = useState(user?.name ?? "")
   const [note, setNote] = useState("")
 
@@ -22,6 +30,7 @@ export default function Me() {
     useCallback(() => {
       if (!user) return
       api<MyStats>(`/users/${user._id}/stats`).then(setStats, () => null)
+      api<Wallet>(`/users/${user._id}/wallet`).then(setWallet, () => null)
     }, [user]),
   )
 
@@ -64,6 +73,26 @@ export default function Me() {
         <Stat value={stats?.streak} label="day streak" icon="flame.fill" color="#F28C38" />
         <Stat value={stats?.trees} label="trees" icon="leaf.fill" color={colors.leafDeep} />
       </View>
+
+      <Card style={styles.coinsCard}>
+        <View style={styles.coinsRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.coins}>{wallet?.coins ?? "—"} 🪙</Text>
+            <Text style={styles.meta}>
+              {wallet?.streak ? `🔥 ${wallet.streak}-day check-in streak` : "Check in daily and water trees to earn coins"}
+            </Text>
+          </View>
+          <Button label="Shop" icon="bag.fill" color={colors.leafDeep} onPress={() => router.push("/shop")} />
+        </View>
+        {wallet?.recent.slice(0, 4).map((entry) => (
+          <View key={`${entry.at}-${entry.reason}`} style={styles.ledgerRow}>
+            <Text style={styles.ledgerText}>{earnedFor[entry.reason]}</Text>
+            <Text style={[styles.ledgerAmount, { color: entry.amount > 0 ? colors.leafDeep : colors.thirsty }]}>
+              {entry.amount > 0 ? `+${entry.amount}` : entry.amount}
+            </Text>
+          </View>
+        ))}
+      </Card>
 
       <Card>
         <SectionTitle icon="person.fill" title="Your name" color={colors.leafDeep} />
@@ -172,6 +201,12 @@ const styles = StyleSheet.create({
   home: { flexDirection: "row", alignItems: "center", gap: 5 },
   homeText: { color: colors.leafDeep, fontWeight: "700" },
   stats: { flexDirection: "row", gap: 8 },
+  coinsCard: { gap: 8, backgroundColor: colors.sunSoft },
+  coinsRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  coins: { fontFamily: rounded, fontSize: 30, fontWeight: "800", color: colors.ink },
+  ledgerRow: { flexDirection: "row", justifyContent: "space-between" },
+  ledgerText: { color: colors.inkSoft },
+  ledgerAmount: { fontFamily: rounded, fontWeight: "800" },
   stat: {
     flex: 1,
     alignItems: "center",
