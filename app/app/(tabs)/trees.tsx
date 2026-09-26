@@ -1,7 +1,8 @@
 import { Icon } from "@/components/icon"
 import { Button, Card, Pill } from "@/components/kit"
 import { TreeBuddy } from "@/components/tree-buddy"
-import { TreeIcon } from "@/components/tree-icon"
+import { CardStickers } from "@/components/card-stickers"
+import { TreePortrait } from "@/components/tree-portrait"
 import { colors, radius, rounded, statusMeta } from "@/constants/design"
 import { api } from "@/lib/api"
 import { useSession } from "@/lib/session"
@@ -88,9 +89,10 @@ export default function MyTrees() {
         const mine = tree.claim?.userId === user?._id
         return (
           <Card key={tree.id} style={tree.status === "thirsty" ? styles.cardThirsty : undefined}>
+            <CardStickers stickers={tree.stickers} size={44} />
             <Pressable style={styles.header} onPress={() => router.push({ pathname: "/tree/[id]", params: { id: tree.id } })}>
               <View style={[styles.face, { backgroundColor: meta.soft }]}>
-                <TreeIcon url={tree.portraitUrl} mood={meta.mood} size={tree.portraitUrl ? 64 : 58} badge={false} stickers={tree.stickers} />
+                <TreePortrait url={tree.portraitUrl} mood={meta.mood} size={tree.portraitUrl ? 64 : 58} badge={false} />
               </View>
               <View style={styles.headerText}>
                 <Text style={styles.name} numberOfLines={1}>{tree.name ?? tree.species}</Text>

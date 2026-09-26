@@ -2,7 +2,8 @@ import { Icon } from "@/components/icon"
 import { Avatar, Button, Card, Pill, SectionTitle } from "@/components/kit"
 import { TreeBuddy } from "@/components/tree-buddy"
 import { DecorateCard } from "@/components/decorate-card"
-import { TreeIcon } from "@/components/tree-icon"
+import { CardStickers } from "@/components/card-stickers"
+import { TreePortrait } from "@/components/tree-portrait"
 import { colors, radius, rounded, statusMeta } from "@/constants/design"
 import { api } from "@/lib/api"
 import { messageNeighbor, openCrew } from "@/lib/messaging"
@@ -156,7 +157,8 @@ export default function TreeScreen() {
   return (
     <ScrollView contentContainerStyle={styles.page}>
       <View style={[styles.hero, { backgroundColor: meta.soft }]}>
-        <TreeIcon url={tree.portraitUrl} mood={meta.mood} size={tree.portraitUrl ? 160 : 130} stickers={tree.stickers} />
+        <CardStickers stickers={tree.stickers} size={64} />
+        <TreePortrait url={tree.portraitUrl} mood={meta.mood} size={tree.portraitUrl ? 160 : 130} />
         {tree.drawingPortrait && !tree.portraitUrl ? (
           <Text style={styles.drawing}>🎨 Grok is drawing {tree.name ?? "this tree"}&apos;s portrait…</Text>
         ) : null}

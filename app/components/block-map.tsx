@@ -1,4 +1,3 @@
-import { Image } from "expo-image"
 import { TreeBuddy } from "@/components/tree-buddy"
 import { rounded, statusMeta } from "@/constants/design"
 import type { TreePin } from "@/lib/types"
@@ -80,7 +79,7 @@ export function BlockMap({
           ? trees.map((tree) => {
               const point = project(tree.lat, tree.lng, camera, size.width, size.height)
               const status = pinOverrides[tree.id] ?? tree.status
-              // Sensor trees and adopted (named) trees get the big pin with a name tag and stickers.
+              // Sensor trees and adopted (named) trees get the big pin with a name tag.
               const star = Boolean(tree.sensorId || tree.name)
               const box = star ? starBox : smallBox
               return (
@@ -89,7 +88,6 @@ export function BlockMap({
                   name={tree.name || tree.species}
                   status={status}
                   star={star}
-                  stickers={tree.stickers}
                   left={point.x - box.width / 2}
                   top={point.y - box.height}
                   onPress={() => onOpen(tree.id)}
@@ -102,14 +100,10 @@ export function BlockMap({
   )
 }
 
-// Sticker badge spots around a 52px pin bubble (they sit outside its clipped circle).
-const pinAnchors = { head: { top: -12, left: 15 }, face: { top: 16, left: 15 }, side: { top: 2, left: 38 }, ground: { top: 34, left: -8 } }
-
 function TreePointer({
   name,
   status,
   star,
-  stickers,
   left,
   top,
   onPress,
@@ -117,7 +111,6 @@ function TreePointer({
   name: string
   status: TreePin["status"]
   star: boolean
-  stickers?: TreePin["stickers"]
   left: number
   top: number
   onPress: () => void
@@ -143,13 +136,6 @@ function TreePointer({
         >
           <TreeBuddy mood={meta.mood} size={star ? 38 : 22} />
         </View>
-        {star
-          ? (stickers ?? []).map((sticker) => (
-              <View key={sticker.slot} style={[styles.sticker, pinAnchors[sticker.slot]]}>
-                <Image source={{ uri: sticker.imageUrl }} style={styles.stickerArt} contentFit="contain" cachePolicy="memory-disk" />
-              </View>
-            ))
-          : null}
       </View>
       <View style={[styles.tail, { borderTopColor: meta.color }]} />
     </Pressable>
@@ -164,16 +150,6 @@ const styles = StyleSheet.create({
   bubble: { alignItems: "center", justifyContent: "center", borderWidth: 2.5, overflow: "hidden" },
   bubbleStar: { width: 52, height: 52, borderRadius: 26 },
   bubbleSmall: { width: 30, height: 30, borderRadius: 15, borderWidth: 2 },
-  sticker: {
-    position: "absolute",
-    width: 22,
-    height: 22,
-    shadowColor: "#1F3A2B",
-    shadowOpacity: 0.25,
-    shadowRadius: 1.5,
-    shadowOffset: { width: 0, height: 1 },
-  },
-  stickerArt: { width: "100%", height: "100%" },
   tail: {
     width: 0,
     height: 0,

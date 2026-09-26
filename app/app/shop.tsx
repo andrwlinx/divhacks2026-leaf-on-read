@@ -9,11 +9,12 @@ import { Stack, useFocusEffect } from "expo-router"
 import { useCallback, useState } from "react"
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 
+// Each group goes on one corner of a tree's card.
 const slotNames: Record<StickerSlot, string> = {
-  head: "On its head",
-  face: "On its face",
-  side: "By its side",
-  ground: "At its roots",
+  head: "Toppers · top left",
+  face: "Accessories · top right",
+  side: "Flair · bottom right",
+  ground: "Friends · bottom left",
 }
 
 /** Spend coins on Grok Imagine stickers, then place them on a tree from its page. */
@@ -63,8 +64,8 @@ export default function Shop() {
       />
       <View style={styles.intro}>
         <Text style={styles.introText}>
-          Earn coins by checking in every day and watering trees. Stickers go on the trees you look after, and the whole
-          block sees them.
+          Earn coins by checking in every day and watering trees. Stickers go on the cards of the trees you look after,
+          and the whole block sees them.
         </Text>
       </View>
       {note ? <Text style={styles.note}>{note}</Text> : null}

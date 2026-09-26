@@ -13,7 +13,7 @@ import { AuthOverlay, useAuth, useMutations, usePresenceRoom, useQuery, useUser 
 import { Droplets, Eye, Hand, Send, Trophy } from 'lucide-react'
 import { BlockMap, type MapTree } from '../../components/leaf/BlockMap'
 import { leaf, statusMeta, type TreeStatus } from '../../components/leaf/palette'
-import { StickerBadges, type TreeSticker } from '../../components/leaf/Stickers'
+import { CardStickers, type TreeSticker } from '../../components/leaf/Stickers'
 import { TreeFace } from '../../components/leaf/TreeFace'
 
 type Tree = {
@@ -146,7 +146,8 @@ function TreeCard({ tree }: { tree: Tree }) {
   const pct = tree.moisture === null || tree.moisture === undefined ? null : Math.round(tree.moisture)
   return (
     <div className="flex flex-col gap-4 rounded-3xl bg-card p-5 shadow-sm" data-testid="tree-card">
-      <div className="flex items-center gap-4 rounded-2xl p-3" style={{ background: meta.soft }}>
+      <div className="relative flex items-center gap-4 rounded-2xl p-3" style={{ background: meta.soft }}>
+        <CardStickers stickers={tree.stickers} size={52} />
         {tree.portraitUrl ? (
           <div className="relative h-24 w-24 shrink-0">
             <img
@@ -154,18 +155,12 @@ function TreeCard({ tree }: { tree: Tree }) {
               alt={`Portrait of ${tree.name ?? tree.species}`}
               className="h-24 w-24 rounded-full object-cover shadow-sm"
             />
-            {tree.stickers?.length ? null : (
-              <div className="absolute -bottom-1 -right-1 overflow-hidden rounded-full border-2 border-white bg-white">
-                <TreeFace mood={meta.mood} size={30} />
-              </div>
-            )}
-            <StickerBadges stickers={tree.stickers} size={96} />
+            <div className="absolute -bottom-1 -right-1 overflow-hidden rounded-full border-2 border-white bg-white">
+              <TreeFace mood={meta.mood} size={30} />
+            </div>
           </div>
         ) : (
-          <div className="relative shrink-0" style={{ width: 84, height: 92 }}>
-            <TreeFace mood={meta.mood} size={84} />
-            <StickerBadges stickers={tree.stickers} size={84} />
-          </div>
+          <TreeFace mood={meta.mood} size={84} />
         )}
         <div className="min-w-0">
           <h1 className="truncate text-2xl font-extrabold">{tree.name ?? tree.species}</h1>

@@ -1,4 +1,5 @@
 import { Icon } from "@/components/icon"
+import { cornerLabels } from "@/components/card-stickers"
 import { Card, SectionTitle } from "@/components/kit"
 import { colors, radius, rounded } from "@/constants/design"
 import { api } from "@/lib/api"
@@ -9,14 +10,15 @@ import { useRouter } from "expo-router"
 import { useEffect, useState } from "react"
 import { Pressable, StyleSheet, Text, View } from "react-native"
 
+// The four corners of the tree's card (API slot ids stay head/face/side/ground).
 const slots: { slot: StickerSlot; label: string }[] = [
-  { slot: "head", label: "Head" },
-  { slot: "face", label: "Face" },
-  { slot: "side", label: "Side" },
-  { slot: "ground", label: "Roots" },
+  { slot: "head", label: cornerLabels.head },
+  { slot: "face", label: cornerLabels.face },
+  { slot: "ground", label: cornerLabels.ground },
+  { slot: "side", label: cornerLabels.side },
 ]
 
-/** Caretakers put stickers they own on a tree, one per slot. Everyone on the block sees them. */
+/** Caretakers slap stickers they own on the corners of a tree's card. Everyone on the block sees them. */
 export function DecorateCard({
   treeId,
   treeName,
@@ -99,7 +101,7 @@ export function DecorateCard({
               ))}
             </View>
           ) : (
-            <Text style={styles.empty}>You don&apos;t have a sticker for this spot yet.</Text>
+            <Text style={styles.empty}>You don&apos;t have a sticker for this corner yet.</Text>
           )}
           <View style={styles.pickerActions}>
             {bySlot.get(open) ? (
@@ -115,7 +117,7 @@ export function DecorateCard({
           </View>
         </View>
       ) : (
-        <Text style={styles.hint}>Stickers you place show up for the whole block, on the map and the web board.</Text>
+        <Text style={styles.hint}>Stickers go on {treeName}&apos;s card, here and on the web board, for the whole block to see.</Text>
       )}
       {error ? <Text style={styles.error}>{error}</Text> : null}
     </Card>
@@ -140,7 +142,7 @@ const styles = StyleSheet.create({
   },
   slotOpen: { borderColor: colors.leaf, borderStyle: "solid", backgroundColor: colors.mint },
   slotArt: { width: 44, height: 44 },
-  slotLabel: { fontSize: 11, fontWeight: "700", color: colors.inkSoft },
+  slotLabel: { fontSize: 10, fontWeight: "700", color: colors.inkSoft, textAlign: "center" },
   picker: { gap: 10 },
   options: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   option: { alignItems: "center", gap: 4, width: 72 },

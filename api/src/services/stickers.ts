@@ -7,7 +7,8 @@ export const slots: Slot[] = ["head", "face", "side", "ground"]
 
 export type Sticker = { id: string; name: string; slot: Slot; price: number; subject: string }
 
-// Grok Imagine draws each subject once (scripts/generate-stickers.ts); the app shows them as round badges.
+// Grok Imagine draws each subject once (scripts/generate-stickers.ts). Slots are the four corners of a
+// tree's card (head = top left, face = top right, side = bottom right, ground = bottom left).
 export const catalog: Sticker[] = [
   { id: "crown", name: "Gold crown", slot: "head", price: 60, subject: "a tiny golden crown with three points and little jewels" },
   { id: "flower-crown", name: "Flower crown", slot: "head", price: 40, subject: "a flower crown of pink and yellow daisies" },
