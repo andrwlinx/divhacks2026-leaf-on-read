@@ -17,9 +17,10 @@ type Session = {
   saveUser: (user: User) => Promise<void>
   /** Forget this phone's neighbor (demo hand-off); the app returns to onboarding. */
   clearUser: () => Promise<void>
-  /** The "+10 🪙" toast after a check-in or watering. */
+  /** The toast above the tab bar: "+10 🪙 Watered Gus", or plain confirmations like "You're on it". */
   coinToast: CoinToast | null
   flashCoins: (amount: number, text: string) => void
+  toast: (text: string) => void
 }
 
 const SessionContext = createContext<Session | null>(null)
@@ -109,6 +110,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       flashCoins: (amount, text) => {
         if (amount > 0) setCoinToast((current) => ({ id: (current?.id ?? 0) + 1, amount, text }))
       },
+      toast: (text) => setCoinToast((current) => ({ id: (current?.id ?? 0) + 1, amount: 0, text })),
       clearUser: async () => {
         await SecureStore.deleteItemAsync(KEY)
         setBanner(null)

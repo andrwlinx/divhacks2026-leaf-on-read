@@ -6,7 +6,7 @@ import { useAudioPlayer } from "expo-audio"
 import * as Haptics from "expo-haptics"
 import { Stack, useRouter } from "expo-router"
 import { useEffect, useState } from "react"
-import { Pressable, StyleSheet, Text, View } from "react-native"
+import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 
 export default function RootLayout() {
@@ -51,6 +51,9 @@ function AlertBanner() {
   const mood = banner.type === "thirsty" || banner.type === "claim_expired" ? "thirsty" : "happy"
   return (
     <Pressable
+      accessibilityRole="alert"
+      accessibilityLabel={`${banner.treeName}: ${banner.text}`}
+      accessibilityHint="Opens the tree"
       style={[styles.banner, { top: insets.top + 6 }]}
       onPress={() => {
         dismissBanner()
@@ -70,11 +73,23 @@ function AlertBanner() {
         </Text>
       </View>
       {banner.voiceUrl ? <PlayClip url={banner.voiceUrl} /> : null}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Dismiss"
+        hitSlop={6}
+        style={styles.close}
+        onPress={(event) => {
+          event.stopPropagation()
+          dismissBanner()
+        }}
+      >
+        <Icon name="xmark" color={colors.inkSoft} size={14} />
+      </Pressable>
     </Pressable>
   )
 }
 
-/** "+10 🪙 Watered Gus" pill that pops up above the tab bar after a check-in or watering. */
+/** "+10 🪙 Watered Gus" (or a plain confirmation) that pops up above the tab bar and any action bar. */
 function CoinToastView() {
   const { coinToast } = useSession()
   const insets = useSafeAreaInsets()
@@ -83,8 +98,11 @@ function CoinToastView() {
   useEffect(() => {
     if (!coinToast) return
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+    AccessibilityInfo.announceForAccessibility(
+      coinToast.amount > 0 ? `${coinToast.text}. Plus ${coinToast.amount} coins.` : coinToast.text,
+    )
     const show = setTimeout(() => setVisible(coinToast.id), 0)
-    const hide = setTimeout(() => setVisible(null), 2600)
+    const hide = setTimeout(() => setVisible(null), 3000)
     return () => {
       clearTimeout(show)
       clearTimeout(hide)
@@ -93,9 +111,11 @@ function CoinToastView() {
 
   if (!coinToast || visible !== coinToast.id) return null
   return (
-    <View pointerEvents="none" style={[styles.coinToast, { bottom: insets.bottom + 70 }]}>
-      <Text style={styles.coinAmount}>+{coinToast.amount} 🪙</Text>
-      <Text style={styles.coinText}>{coinToast.text}</Text>
+    <View pointerEvents="none" style={[styles.coinToast, { bottom: insets.bottom + 104 }]}>
+      {coinToast.amount > 0 ? <Text style={styles.coinAmount}>+{coinToast.amount} 🪙</Text> : null}
+      <Text style={styles.coinText} numberOfLines={2}>
+        {coinToast.text}
+      </Text>
     </View>
   )
 }
@@ -104,6 +124,8 @@ function PlayClip({ url }: { url: string }) {
   const player = useAudioPlayer(url)
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Play voice message"
       style={styles.play}
       onPress={(event) => {
         event.stopPropagation()
@@ -145,11 +167,12 @@ const styles = StyleSheet.create({
   copy: { flex: 1 },
   titleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   name: { fontFamily: rounded, fontWeight: "800", color: colors.ink, fontSize: 15 },
-  now: { color: colors.muted, fontSize: 12 },
+  now: { color: colors.inkSoft, fontSize: 13 },
   text: { color: colors.ink, marginTop: 2, lineHeight: 19 },
   coinToast: {
     position: "absolute",
     alignSelf: "center",
+    maxWidth: "90%",
     zIndex: 30,
     flexDirection: "row",
     alignItems: "center",
@@ -164,11 +187,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
   },
   coinAmount: { fontFamily: rounded, fontWeight: "800", color: colors.sun, fontSize: 17 },
-  coinText: { fontFamily: rounded, fontWeight: "700", color: "#fff", fontSize: 15 },
+  coinText: { fontFamily: rounded, fontWeight: "700", color: "#fff", fontSize: 15, flexShrink: 1 },
+  close: { width: 32, height: 44, alignItems: "center", justifyContent: "center" },
   play: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: colors.leafDeep,
     alignItems: "center",
     justifyContent: "center",

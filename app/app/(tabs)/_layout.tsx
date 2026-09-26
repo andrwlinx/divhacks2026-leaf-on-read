@@ -61,10 +61,10 @@ export default function TabLayout() {
       screenListeners={{ tabPress: () => void Haptics.selectionAsync() }}
       screenOptions={{
         tabBarActiveTintColor: colors.leafDeep,
-        tabBarInactiveTintColor: colors.muted,
+        tabBarInactiveTintColor: colors.inkSoft,
         tabBarStyle: { backgroundColor: colors.card, borderTopColor: colors.line },
-        tabBarLabelStyle: { fontFamily: rounded, fontWeight: "700", fontSize: 11 },
-        tabBarBadgeStyle: { backgroundColor: colors.thirsty, fontWeight: "800" },
+        tabBarLabelStyle: { fontFamily: rounded, fontWeight: "700", fontSize: 12 },
+        tabBarBadgeStyle: { backgroundColor: colors.thirstyText, fontWeight: "800" },
         headerStyle: { backgroundColor: colors.bg },
         headerShadowVisible: false,
         headerTitleAlign: "left",
@@ -75,7 +75,12 @@ export default function TabLayout() {
       <Tabs.Screen name="map" options={{ title: "Map", headerShown: false, tabBarIcon: tabIcon("map.fill") }} />
       <Tabs.Screen
         name="trees"
-        options={{ title: "My trees", tabBarIcon: tabIcon("tree.fill"), tabBarBadge: thirsty || undefined }}
+        options={{
+          title: "My trees",
+          tabBarIcon: tabIcon("tree.fill"),
+          tabBarBadge: thirsty || undefined,
+          tabBarAccessibilityLabel: thirsty ? `My trees, ${thirsty} thirsty` : "My trees",
+        }}
       />
       <Tabs.Screen
         name="chats"
