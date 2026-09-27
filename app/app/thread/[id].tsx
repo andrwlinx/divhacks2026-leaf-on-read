@@ -329,7 +329,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   headerName: { fontFamily: rounded, fontWeight: "800", fontSize: 16, color: colors.ink, maxWidth: 220 },
-  headerMeta: { color: colors.inkSoft, fontSize: 12 },
+  headerMeta: { color: colors.inkSoft, fontSize: 13 },
   list: { padding: 16, gap: 6, flexGrow: 1 },
   members: { color: colors.inkSoft, textAlign: "center", fontSize: 13, marginBottom: 8 },
   empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: 6, paddingTop: 40, paddingHorizontal: 20 },

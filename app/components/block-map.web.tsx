@@ -24,7 +24,7 @@ export function BlockMap({
     <View style={styles.page}>
       <Text style={styles.lead}>The map is on the iPhone. These are the trees in view.</Text>
       {trees.map((tree) => (
-        <Pressable key={tree.id} onPress={() => onOpen(tree.id)} style={styles.row}>
+        <Pressable key={tree.id} accessibilityRole="button" onPress={() => onOpen(tree.id)} style={styles.row}>
           <Text style={styles.name}>{tree.name || tree.species}</Text>
           <Text>{tree.status}</Text>
         </Pressable>
