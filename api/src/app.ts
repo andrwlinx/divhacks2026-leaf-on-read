@@ -491,12 +491,13 @@ export function createApp() {
     const userId = c.req.query("userId")
     if (!userId) return c.json({ error: "userId required" }, 400)
     const limit = Number(c.req.query("limit") || 50)
+    // The newest `limit` messages, returned oldest-first for the chat screen.
     const rows = await messages()
       .find({ treeId: c.req.param("id"), userId })
-      .sort({ at: 1 })
+      .sort({ at: -1 })
       .limit(limit)
       .toArray()
-    return c.json(rows)
+    return c.json(rows.reverse())
   })
 
   // Voice conversation: the tree greets the neighbor and says how it's doing.
