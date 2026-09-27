@@ -1,7 +1,7 @@
 import { Icon } from "@/components/icon"
 import { cornerLabels } from "@/components/card-stickers"
-import { Card, SectionTitle } from "@/components/kit"
-import { colors, radius, rounded } from "@/constants/design"
+import { Card, LinkButton, SectionTitle } from "@/components/kit"
+import { colors, radius } from "@/constants/design"
 import { api } from "@/lib/api"
 import type { Sticker, StickerSlot, TreeSticker, Wallet } from "@/lib/types"
 import { Image } from "expo-image"
@@ -39,7 +39,7 @@ export function DecorateCard({
   const [error, setError] = useState("")
 
   useEffect(() => {
-    api<Sticker[]>("/stickers").then(setCatalog, () => null)
+    api<Sticker[]>("/stickers").then(setCatalog, () => setError("Couldn't load your stickers."))
     api<Wallet>(`/users/${userId}/wallet`).then(setWallet, () => null)
   }, [userId])
 
@@ -65,9 +65,7 @@ export function DecorateCard({
     <Card>
       <View style={styles.header}>
         <SectionTitle icon="sparkles" title={`Decorate ${treeName}`} color={colors.leafDeep} />
-        <Pressable hitSlop={8} onPress={() => router.push("/shop")}>
-          <Text style={styles.coins}>{wallet ? `${wallet.coins} 🪙` : ""}</Text>
-        </Pressable>
+        <LinkButton label={wallet ? `${wallet.coins} 🪙` : "Shop"} color={colors.ink} onPress={() => router.push("/shop")} />
       </View>
       <View style={styles.slots}>
         {slots.map(({ slot, label }) => {
@@ -75,13 +73,16 @@ export function DecorateCard({
           return (
             <Pressable
               key={slot}
+              accessibilityRole="button"
+              accessibilityLabel={`${label} corner, ${current ? "has a sticker" : "empty"}`}
+              accessibilityState={{ expanded: open === slot }}
               onPress={() => setOpen((value) => (value === slot ? null : slot))}
               style={[styles.slot, open === slot && styles.slotOpen]}
             >
               {current ? (
                 <Image source={{ uri: current.imageUrl }} style={styles.slotArt} contentFit="contain" />
               ) : (
-                <Icon name="plus" color={colors.muted} size={18} />
+                <Icon name="plus" color={colors.inkSoft} size={18} />
               )}
               <Text style={styles.slotLabel}>{label}</Text>
             </Pressable>
@@ -94,7 +95,13 @@ export function DecorateCard({
           {owned.length ? (
             <View style={styles.options}>
               {owned.map((sticker) => (
-                <Pressable key={sticker.id} style={styles.option} onPress={() => void place(open, sticker.id)}>
+                <Pressable
+                  key={sticker.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Put ${sticker.name} here`}
+                  style={styles.option}
+                  onPress={() => void place(open, sticker.id)}
+                >
                   <Image source={{ uri: sticker.imageUrl }} style={styles.optionArt} contentFit="contain" />
                   <Text style={styles.optionName} numberOfLines={1}>{sticker.name}</Text>
                 </Pressable>
@@ -105,15 +112,11 @@ export function DecorateCard({
           )}
           <View style={styles.pickerActions}>
             {bySlot.get(open) ? (
-              <Pressable onPress={() => void place(open, null)}>
-                <Text style={styles.remove}>Remove sticker</Text>
-              </Pressable>
+              <LinkButton label="Remove sticker" color={colors.thirsty} onPress={() => void place(open, null)} />
             ) : (
               <View />
             )}
-            <Pressable onPress={() => router.push("/shop")}>
-              <Text style={styles.shop}>Get more in the shop →</Text>
-            </Pressable>
+            <LinkButton label="Get more in the shop" icon="bag.fill" onPress={() => router.push("/shop")} />
           </View>
         </View>
       ) : (
@@ -126,13 +129,13 @@ export function DecorateCard({
 
 const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  coins: { fontFamily: rounded, fontWeight: "800", color: colors.ink },
   slots: { flexDirection: "row", gap: 8 },
   slot: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     gap: 4,
+    minHeight: 72,
     paddingVertical: 10,
     borderRadius: radius.md,
     borderWidth: 1.5,
@@ -142,16 +145,14 @@ const styles = StyleSheet.create({
   },
   slotOpen: { borderColor: colors.leaf, borderStyle: "solid", backgroundColor: colors.mint },
   slotArt: { width: 44, height: 44 },
-  slotLabel: { fontSize: 10, fontWeight: "700", color: colors.inkSoft, textAlign: "center" },
+  slotLabel: { fontSize: 13, fontWeight: "700", color: colors.inkSoft, textAlign: "center" },
   picker: { gap: 10 },
   options: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   option: { alignItems: "center", gap: 4, width: 72 },
   optionArt: { width: 60, height: 60 },
-  optionName: { fontSize: 11, color: colors.inkSoft },
-  empty: { color: colors.inkSoft },
-  pickerActions: { flexDirection: "row", justifyContent: "space-between" },
-  remove: { color: colors.thirsty, fontWeight: "700" },
-  shop: { color: colors.leafDeep, fontWeight: "800" },
+  optionName: { fontSize: 13, color: colors.inkSoft },
+  empty: { color: colors.inkSoft, fontSize: 15 },
+  pickerActions: { flexDirection: "row", justifyContent: "space-between", flexWrap: "wrap" },
   hint: { color: colors.inkSoft, fontSize: 13, lineHeight: 18 },
-  error: { color: colors.thirsty, fontWeight: "600" },
+  error: { color: colors.thirstyText, fontWeight: "600" },
 })

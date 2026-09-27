@@ -1,6 +1,7 @@
 import { Icon } from "@/components/icon"
 import { colors, radius, rounded, shadow } from "@/constants/design"
 import { api } from "@/lib/api"
+import { ScreenState } from "@/components/kit"
 import { useSession } from "@/lib/session"
 import type { Sticker, StickerSlot, Wallet } from "@/lib/types"
 import { Image } from "expo-image"
@@ -19,19 +20,20 @@ const slotNames: Record<StickerSlot, string> = {
 
 /** Spend coins on Grok Imagine stickers, then place them on a tree from its page. */
 export default function Shop() {
-  const { user } = useSession()
+  const { user, toast } = useSession()
   const [stickers, setStickers] = useState<Sticker[]>([])
   const [wallet, setWallet] = useState<Wallet | null>(null)
   const [buying, setBuying] = useState<string | null>(null)
-  const [note, setNote] = useState("")
+  const [error, setError] = useState("")
 
-  useFocusEffect(
-    useCallback(() => {
-      if (!user) return
-      api<Sticker[]>("/stickers").then(setStickers, () => null)
-      api<Wallet>(`/users/${user._id}/wallet`).then(setWallet, () => null)
-    }, [user]),
-  )
+  const load = useCallback(() => {
+    if (!user) return
+    setError("")
+    api<Sticker[]>("/stickers").then(setStickers, (caught: Error) => setError(caught.message))
+    api<Wallet>(`/users/${user._id}/wallet`).then(setWallet, () => null)
+  }, [user])
+
+  useFocusEffect(load)
 
   async function buy(sticker: Sticker) {
     if (!user) return
@@ -39,9 +41,9 @@ export default function Shop() {
     try {
       setWallet(await api<Wallet>(`/users/${user._id}/stickers/${sticker.id}/buy`, { method: "POST" }))
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-      setNote(`Got the ${sticker.name.toLowerCase()}! Put it on one of your trees from its page.`)
-    } catch (error) {
-      setNote(error instanceof Error && error.message === "short" ? "Not enough coins yet. Water a tree!" : "Couldn't buy that.")
+      toast(`Got the ${sticker.name.toLowerCase()}! Put it on a tree from its page.`)
+    } catch (caught) {
+      toast(caught instanceof Error && caught.message === "short" ? "Not enough coins yet. Water a tree!" : "Couldn't buy that.")
     } finally {
       setBuying(null)
     }
@@ -56,7 +58,7 @@ export default function Shop() {
         options={{
           title: "Sticker shop",
           headerRight: () => (
-            <View style={styles.balance}>
+            <View style={styles.balance} accessible accessibilityLabel={`${coins} coins`}>
               <Text style={styles.balanceText}>{coins} 🪙</Text>
             </View>
           ),
@@ -68,15 +70,22 @@ export default function Shop() {
           and the whole block sees them.
         </Text>
       </View>
-      {note ? <Text style={styles.note}>{note}</Text> : null}
-      {stickers.length === 0 ? <ActivityIndicator color={colors.leafDeep} style={{ marginTop: 40 }} /> : null}
+      {stickers.length === 0 ? (
+        error ? (
+          <ScreenState kind="error" title="Couldn't open the shop" text={error} action="Try again" onAction={load} />
+        ) : (
+          <ScreenState kind="loading" />
+        )
+      ) : null}
 
       {slots.map((slot) => {
         const items = stickers.filter((sticker) => sticker.slot === slot)
         if (items.length === 0) return null
         return (
           <View key={slot} style={styles.section}>
-            <Text style={styles.sectionTitle}>{slotNames[slot]}</Text>
+            <Text accessibilityRole="header" style={styles.sectionTitle}>
+              {slotNames[slot]}
+            </Text>
             <View style={styles.grid}>
               {items.map((sticker) => {
                 const owned = wallet?.owned.includes(sticker.id)
@@ -88,12 +97,19 @@ export default function Shop() {
                     </View>
                     <Text style={styles.name} numberOfLines={1}>{sticker.name}</Text>
                     {owned ? (
-                      <View style={[styles.button, styles.owned]}>
+                      <View style={[styles.button, styles.owned]} accessible accessibilityLabel={`${sticker.name}, owned`}>
                         <Icon name="checkmark" color={colors.leafDeep} size={12} weight="bold" />
                         <Text style={styles.ownedText}>Owned</Text>
                       </View>
                     ) : (
                       <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={
+                          short > 0
+                            ? `${sticker.name}, ${sticker.price} coins. You need ${short} more`
+                            : `Buy ${sticker.name} for ${sticker.price} coins`
+                        }
+                        accessibilityState={{ disabled: short > 0 || buying !== null, busy: buying === sticker.id }}
                         disabled={short > 0 || buying !== null}
                         onPress={() => void buy(sticker)}
                         style={({ pressed }) => [
@@ -105,7 +121,9 @@ export default function Shop() {
                         {buying === sticker.id ? (
                           <ActivityIndicator color="#fff" size="small" />
                         ) : (
-                          <Text style={short > 0 ? styles.lockedText : styles.buyText}>{sticker.price} 🪙</Text>
+                          <Text style={short > 0 ? styles.lockedText : styles.buyText}>
+                            {short > 0 ? `Need ${short} more 🪙` : `${sticker.price} 🪙`}
+                          </Text>
                         )}
                       </Pressable>
                     )}
@@ -125,8 +143,7 @@ const styles = StyleSheet.create({
   balance: { backgroundColor: colors.ink, borderRadius: radius.pill, paddingHorizontal: 12, paddingVertical: 5 },
   balanceText: { fontFamily: rounded, fontWeight: "800", color: colors.sun },
   intro: { backgroundColor: colors.sunSoft, borderRadius: radius.md, padding: 14 },
-  introText: { color: colors.ink, lineHeight: 20 },
-  note: { color: colors.leafDeep, fontWeight: "700", textAlign: "center" },
+  introText: { color: colors.ink, fontSize: 15, lineHeight: 21 },
   section: { gap: 10 },
   sectionTitle: { fontFamily: rounded, fontWeight: "800", fontSize: 17, color: colors.ink },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
@@ -157,13 +174,12 @@ const styles = StyleSheet.create({
     gap: 4,
     alignSelf: "stretch",
     borderRadius: radius.pill,
-    paddingVertical: 8,
-    minHeight: 34,
+    minHeight: 44,
   },
   buy: { backgroundColor: colors.leafDeep },
   buyText: { fontFamily: rounded, fontWeight: "800", color: "#fff" },
   locked: { backgroundColor: colors.bg },
-  lockedText: { fontFamily: rounded, fontWeight: "800", color: colors.muted },
+  lockedText: { fontFamily: rounded, fontWeight: "800", fontSize: 13, color: colors.inkSoft },
   owned: { backgroundColor: colors.mint },
   ownedText: { fontFamily: rounded, fontWeight: "800", color: colors.leafDeep },
 })

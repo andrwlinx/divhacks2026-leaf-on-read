@@ -1,5 +1,5 @@
 import { Icon } from "@/components/icon"
-import { Avatar, Button, Card, Chip, SectionTitle } from "@/components/kit"
+import { Avatar, Button, Card, Chip, SectionTitle, textSafe } from "@/components/kit"
 import { colors, radius, rounded } from "@/constants/design"
 import { api } from "@/lib/api"
 import { clearChatReads } from "@/lib/chat-read"
@@ -20,11 +20,10 @@ const earnedFor: Record<Wallet["recent"][number]["reason"], string> = {
 
 export default function Me() {
   const router = useRouter()
-  const { user, saveUser, clearUser } = useSession()
+  const { user, saveUser, clearUser, toast } = useSession()
   const [stats, setStats] = useState<MyStats | null>(null)
   const [wallet, setWallet] = useState<Wallet | null>(null)
   const [name, setName] = useState(user?.name ?? "")
-  const [note, setNote] = useState("")
 
   useFocusEffect(
     useCallback(() => {
@@ -40,9 +39,9 @@ export default function Me() {
       const next = await api<User>(`/users/${user._id}`, { method: "PATCH", body: JSON.stringify(patch) })
       await saveUser(next)
       void Haptics.selectionAsync()
-      setNote(patch.language ? "Your trees will talk to you in this language now." : "Saved.")
+      toast(patch.language ? "Your trees will talk to you in this language now." : "Saved.")
     } catch (error) {
-      setNote(error instanceof Error ? error.message : "Couldn't save that.")
+      toast(error instanceof Error ? error.message : "Couldn't save that.")
     }
   }
 
@@ -70,7 +69,7 @@ export default function Me() {
       <View style={styles.stats}>
         <Stat value={stats?.gallons} label="gallons" icon="drop.fill" color={colors.water} />
         <Stat value={stats?.waterings} label="waterings" icon="checkmark.circle.fill" color={colors.leaf} />
-        <Stat value={stats?.streak} label="day streak" icon="flame.fill" color="#F28C38" />
+        <Stat value={stats?.streak} label="day streak" icon="flame.fill" color={colors.streak} />
         <Stat value={stats?.trees} label="trees" icon="leaf.fill" color={colors.leafDeep} />
       </View>
 
@@ -87,7 +86,7 @@ export default function Me() {
         {wallet?.recent.slice(0, 4).map((entry) => (
           <View key={`${entry.at}-${entry.reason}`} style={styles.ledgerRow}>
             <Text style={styles.ledgerText}>{earnedFor[entry.reason]}</Text>
-            <Text style={[styles.ledgerAmount, { color: entry.amount > 0 ? colors.leafDeep : colors.thirsty }]}>
+            <Text style={[styles.ledgerAmount, { color: entry.amount > 0 ? colors.leafDeep : colors.thirstyText }]}>
               {entry.amount > 0 ? `+${entry.amount}` : entry.amount}
             </Text>
           </View>
@@ -98,6 +97,7 @@ export default function Me() {
         <SectionTitle icon="person.fill" title="Your name" color={colors.leafDeep} />
         <View style={styles.nameRow}>
           <TextInput
+            accessibilityLabel="Your name"
             style={styles.input}
             value={name}
             onChangeText={setName}
@@ -128,8 +128,6 @@ export default function Me() {
         </View>
       </Card>
 
-      {note ? <Text style={styles.note}>{note}</Text> : null}
-
       <Card>
         <SectionTitle icon="message.fill" title="Texts from your trees" color={colors.leafDeep} />
         <Text style={styles.body}>
@@ -143,17 +141,20 @@ export default function Me() {
           <Button
             label="Text Gus on iMessage"
             icon="message.fill"
-            color={colors.leaf}
             onPress={() => void Linking.openURL(`sms:${agent}&body=${encodeURIComponent(`Hi 🌳 join ${user.userCode}`)}`)}
           />
         ) : null}
       </Card>
 
+      <Text accessibilityRole="header" style={styles.demoTitle}>
+        Demo
+      </Text>
       <Button
         label="Reset this phone"
         icon="arrow.counterclockwise"
-        variant="outline"
+        variant="ghost"
         color={colors.thirsty}
+        hint="Goes back to onboarding. Trees and waterings stay saved"
         onPress={() =>
           Alert.alert("Reset this phone?", "You'll go back to onboarding. Your trees and waterings stay saved.", [
             { text: "Cancel", style: "cancel" },
@@ -185,9 +186,9 @@ function Stat({
   color: string
 }) {
   return (
-    <View style={styles.stat}>
+    <View style={styles.stat} accessible accessibilityLabel={`${value ?? "no"} ${label}`}>
       <Icon name={icon} color={color} size={18} />
-      <Text style={[styles.statValue, { color }]}>{value ?? "—"}</Text>
+      <Text style={[styles.statValue, { color: color === colors.streak ? colors.soilDeep : textSafe(color) }]}>{value ?? "—"}</Text>
       <Text style={styles.statLabel}>{label}</Text>
     </View>
   )
@@ -197,15 +198,15 @@ const styles = StyleSheet.create({
   page: { padding: 16, gap: 14, paddingBottom: 40 },
   hero: { alignItems: "center", gap: 6, paddingVertical: 6 },
   heroName: { fontFamily: rounded, fontSize: 28, fontWeight: "800", color: colors.ink },
-  heroMeta: { color: colors.inkSoft, fontWeight: "600" },
+  heroMeta: { color: colors.inkSoft, fontSize: 15, fontWeight: "600" },
   home: { flexDirection: "row", alignItems: "center", gap: 5 },
-  homeText: { color: colors.leafDeep, fontWeight: "700" },
+  homeText: { color: colors.leafDeep, fontSize: 15, fontWeight: "700" },
   stats: { flexDirection: "row", gap: 8 },
   coinsCard: { gap: 8, backgroundColor: colors.sunSoft },
   coinsRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   coins: { fontFamily: rounded, fontSize: 30, fontWeight: "800", color: colors.ink },
   ledgerRow: { flexDirection: "row", justifyContent: "space-between" },
-  ledgerText: { color: colors.inkSoft },
+  ledgerText: { color: colors.inkSoft, fontSize: 15 },
   ledgerAmount: { fontFamily: rounded, fontWeight: "800" },
   stat: {
     flex: 1,
@@ -216,19 +217,19 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   statValue: { fontFamily: rounded, fontSize: 22, fontWeight: "800" },
-  statLabel: { color: colors.inkSoft, fontSize: 11, fontWeight: "600" },
+  statLabel: { color: colors.inkSoft, fontSize: 13, fontWeight: "600", textAlign: "center" },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   input: {
     flex: 1,
     backgroundColor: colors.bg,
     borderRadius: radius.sm,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    minHeight: 48,
     fontSize: 16,
     color: colors.ink,
   },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  note: { color: colors.leafDeep, fontWeight: "700", textAlign: "center" },
+  demoTitle: { color: colors.inkSoft, fontSize: 13, fontWeight: "800", textTransform: "uppercase", letterSpacing: 1, marginTop: 8 },
   body: { color: colors.inkSoft, lineHeight: 21 },
   codeRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   meta: { color: colors.inkSoft },
