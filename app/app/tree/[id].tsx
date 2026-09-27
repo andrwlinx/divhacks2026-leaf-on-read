@@ -150,7 +150,11 @@ export default function TreeScreen() {
   async function demo(moisture: number, status: "thirsty" | "ok") {
     if (!id) return
     setPin(id, status)
-    await api("/demo/sensor", { method: "POST", body: JSON.stringify({ moisture }) })
+    try {
+      await api("/demo/sensor", { method: "POST", body: JSON.stringify({ moisture }) })
+    } catch {
+      toast("Couldn't reach the server. Try again in a moment.")
+    }
   }
 
   if (!tree) {
@@ -331,7 +335,7 @@ export default function TreeScreen() {
               treeName={name}
               userId={user._id}
               placed={tree.stickers ?? []}
-              onChanged={() => void load()}
+              onChanged={() => void load().catch(() => null)}
             />
           ) : (
             <Pressable
@@ -377,7 +381,7 @@ export default function TreeScreen() {
                   icon="cloud.rain.fill"
                   variant="soft"
                   color={colors.water}
-                  onPress={() => void api("/demo/rain", { method: "POST" })}
+                  onPress={() => void api("/demo/rain", { method: "POST" }).catch(() => toast("Couldn't reach the server."))}
                 />
               </View>
             ) : null}
