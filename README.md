@@ -40,4 +40,4 @@ cd app && npx expo start --tunnel
 
 Open the QR code in Expo Go on an iPhone. Gus is the pin near Columbia. On his profile, **Pull from soil** dries the virtual sensor; within a few seconds his pin turns red and his text arrives. **Back in the pot** puts him back. Log a watering and he thanks you.
 
-DigitalOcean, Atlas, and Tiger Data replace `MONGODB_URI`, `TIGER_DATABASE_URL`, and the tunnel URL before judging. The API image is `api/Dockerfile` and listens on `PORT`.
+DigitalOcean, Atlas, and Tiger Data replace `MONGODB_URI`, `TIGER_DATABASE_URL`, and the tunnel URL before judging. The API image is `api/Dockerfile` and listens on `PORT`
