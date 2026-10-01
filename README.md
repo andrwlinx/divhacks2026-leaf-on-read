@@ -1,6 +1,6 @@
 # Leaf on Read
 
-A young street tree in New York can drink 15 to 20 gallons a week from May through October. That is three or four buckets, carried by someone who lives close enough to notice. The city looks after a new tree for its first two years. After that, the tree lives or dies with the block.
+A young street tree in New York can drink 15 to 20 gallons a week from May through October. That is three or four buckets, carried by someone who lives close enough to notice. The city looks after a new tree for its first two years. After that, the tree lives or dies depending on the block.
 
 Most of them die thirsty. Dry soil is invisible from the sidewalk, and a reminder that arrives on the wrong week gets ignored. Leaf on Read puts a small sensor in the soil and lets the tree ask its neighbors, in its own voice, on the day it actually needs water.
 
@@ -50,4 +50,3 @@ DigitalOcean, Atlas, and Tiger Data replace `MONGODB_URI`, `TIGER_DATABASE_URL`,
 - Ansia Sae, MIT
 
 Awarded second place in the Grand Prize at Divhacks 2026.
-
